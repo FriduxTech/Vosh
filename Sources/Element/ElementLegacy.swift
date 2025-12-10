@@ -1,11 +1,26 @@
+//
+//  ElementLegacy.swift
+//  Vosh
+//
+//  Created by Vosh Team.
+//
+
 import Foundation
 import ApplicationServices
 
-/// Declares the required functionality for any Swift type that can be converted to and from a CoreFoundation type.
+/// A protocol that enables seamless conversion between modern Swift types and CoreFoundation (CF) legacy types.
+///
+/// Adopting `ElementLegacy` allows a type to be initialized from a `CFTypeRef` and to export itself
+/// back to a `CFTypeRef`. This is essential for communicating with the underlying C-based Accessibility API
+/// which relies heavily on `CFTypeRef`, `AXValue`, and generic containers.
 protocol ElementLegacy {
-    /// Initializes a new Swift type by converting from a legacy CoreFoundation type.
+    
+    /// Initializes the complying Swift type from a legacy CoreFoundation reference.
+    ///
+    /// - Parameter value: The raw `CFTypeRef` to convert.
     init?(legacyValue value: CFTypeRef)
-    /// Converts this Swift type to a legacy CoreFoundation type.
+    
+    /// The CoreFoundation representation of the Swift instance.
     var legacyValue: CFTypeRef {get}
 }
 
@@ -165,82 +180,78 @@ extension AttributedString: ElementLegacy {
     }
 }
 
+/// A type that can be boxed into and unboxed from an `AXValue`.
+protocol AXValueBoxable {
+    static var axValueType: AXValueType { get }
+}
+
+extension AXValueBoxable {
+    /// Boxes the value into an `AXValue`.
+    func toAXValue() -> AXValue? {
+        var value = self
+        return AXValueCreate(Self.axValueType, &value)
+    }
+    
+    /// Unboxes an `AXValue` into this type.
+    static func from(axValue: AXValue) -> Self? {
+        guard AXValueGetType(axValue) == Self.axValueType else { return nil }
+        // We use a dummy initialized var to hold the result
+        // Swift requires initialization. For structs we can usually just verify size/type matches.
+        // Unsafe logic:
+        let pointer = UnsafeMutablePointer<Self>.allocate(capacity: 1)
+        defer { pointer.deallocate() }
+        
+        // We can't easily init 'Self' if we don't know it, but we can write TO the pointer.
+        // AXValuegetValue writes to the pointer.
+        guard AXValueGetValue(axValue, Self.axValueType, pointer) else { return nil }
+        return pointer.move()
+    }
+}
+
+extension CGPoint: AXValueBoxable { static var axValueType: AXValueType { .cgPoint } }
+extension CGSize: AXValueBoxable { static var axValueType: AXValueType { .cgSize } }
+extension CGRect: AXValueBoxable { static var axValueType: AXValueType { .cgRect } }
+extension CFRange: AXValueBoxable { static var axValueType: AXValueType { .cfRange } }
+
+// Bridge the generic logic to ElementLegacy
+extension CGPoint {
+    init?(legacyValue value: CFTypeRef) {
+        guard CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
+        guard let val = Self.from(axValue: value as! AXValue) else { return nil }
+        self = val
+    }
+    var legacyValue: CFTypeRef { return toAXValue() ?? kCFNull }
+}
+
+extension CGSize {
+    init?(legacyValue value: CFTypeRef) {
+         guard CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
+         guard let val = Self.from(axValue: value as! AXValue) else { return nil }
+         self = val
+    }
+    var legacyValue: CFTypeRef { return toAXValue() ?? kCFNull }
+}
+
+extension CGRect {
+    init?(legacyValue value: CFTypeRef) {
+         guard CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
+         guard let val = Self.from(axValue: value as! AXValue) else { return nil }
+         self = val
+    }
+    var legacyValue: CFTypeRef { return toAXValue() ?? kCFNull }
+}
+
 extension Range: ElementLegacy where Bound == Int {
     init?(legacyValue value: CFTypeRef) {
-        guard CFGetTypeID(value) == AXValueGetTypeID() else {
-            return nil
-        }
-        let value = unsafeBitCast(value, to: AXValue.self)
-        var range = CFRangeMake(0, 0)
-        guard AXValueGetValue(value, .cfRange, &range) else {
-            return nil
-        }
-        self = Int(range.location) ..< Int(range.location + range.length)
+         guard CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
+         guard let cfRange = CFRange.from(axValue: value as! AXValue) else { return nil }
+         self = Int(cfRange.location) ..< Int(cfRange.location + cfRange.length)
     }
-
     var legacyValue: CFTypeRef {
-        var range = CFRangeMake(self.lowerBound, self.upperBound - self.lowerBound)
-        return AXValueCreate(.cfRange, &range)!
+        let cfRange = CFRangeMake(self.lowerBound, self.upperBound - self.lowerBound)
+        return cfRange.toAXValue() ?? kCFNull
     }
 }
-
-extension CGPoint: ElementLegacy {
-    init?(legacyValue value: CFTypeRef) {
-        guard CFGetTypeID(value) == AXValueGetTypeID() else {
-            return nil
-        }
-        let value = unsafeBitCast(value, to: AXValue.self)
-        var point = CGPoint.zero
-        guard AXValueGetValue(value, .cgPoint, &point) else {
-            return nil
-        }
-        self = point
-    }
-
-    var legacyValue: CFTypeRef {
-        var point = self
-        return AXValueCreate(.cgPoint, &point)!
-    }
-}
-
-extension CGSize: ElementLegacy {
-    init?(legacyValue value: CFTypeRef) {
-        guard CFGetTypeID(value) == AXValueGetTypeID() else {
-            return nil
-        }
-        let value = unsafeBitCast(value, to: AXValue.self)
-        var size = CGSize.zero
-        guard AXValueGetValue(value, .cgSize, &size) else {
-            return nil
-        }
-        self = size
-    }
-
-    var legacyValue: CFTypeRef {
-        var size = self
-        return AXValueCreate(.cgSize, &size)!
-    }
-}
-
-extension CGRect: ElementLegacy {
-    init?(legacyValue value: CFTypeRef) {
-        guard CFGetTypeID(value) == AXValueGetTypeID() else {
-            return nil
-        }
-        let value = unsafeBitCast(value, to: AXValue.self)
-        var rect = CGRect.zero
-        guard AXValueGetValue(value, .cgRect, &rect) else {
-            return nil
-        }
-        self = rect
-    }
-
-    var legacyValue: CFTypeRef {
-        var rect = self
-        return AXValueCreate(.cgRect, &rect)!
-    }
-}
-
 extension ElementError: ElementLegacy {
     init?(legacyValue value: CFTypeRef) {
         guard CFGetTypeID(value) == AXValueGetTypeID() else {
@@ -262,9 +273,14 @@ extension ElementError: ElementLegacy {
 
 extension Element: ElementLegacy {}
 
-/// Converts a value from any known legacy type to a Swift type.
-/// - Parameter value: Value to convert.
-/// - Returns: Converted Swift value.
+/// Intelligently converts an arbitrary legacy `CFTypeRef` into its corresponding Swift type.
+///
+/// This factory function inspects the type ID of the provided CoreFoundation reference
+/// and delegates to the appropriate `ElementLegacy` initializer. It handles primitives,
+/// collections, geometric structs (`AXValue`), error codes, and accessibility elements.
+///
+/// - Parameter value: The raw `CFTypeRef` to convert. Can be nil.
+/// - Returns: A native Swift type (`String`, `Int64`, `CGRect`, `Element`, etc.) or `nil` if unrecognized.
 func fromLegacy(value: CFTypeRef?) -> Any? {
     guard let value = value else {
         return nil

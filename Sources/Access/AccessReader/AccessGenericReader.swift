@@ -1,24 +1,42 @@
+//
+//  AccessGenericReader.swift
+//  Vosh
+//
+//  Created by Vosh Team.
+//
+
 import Foundation
 import OSLog
 
 import Element
 import Output
 
-/// Unspecialized accessibility reader.
+/// The base accessibility reader class.
+///
+/// `AccessGenericReader` provides the default implementation for reading accessibility elements.
+/// It systematically retrieves and composes semantic output from standard attributes like
+/// title, value, role, state, and help text.
 @AccessActor class AccessGenericReader {
-    /// Element to read.
+    
+    /// The element being read.
     let element: Element
-    /// System logging facility.
+    
+    /// Logger for identifying unhandled value types or issues.
     private static let logger = Logger()
 
-    /// Creates a generic accessibility reader.
-    /// - Parameter element: Element to read.
+    /// Initializes a generic reader for the specified element.
+    ///
+    /// - Parameter element: The `Element` to read.
     init(for element: Element) async throws {
         self.element = element
     }
 
-    /// Reads the accessibility content of the wrapped element.
-    /// - Returns: Semantically described output content.
+    /// Generates the full accessibility content for the element.
+    ///
+    /// This method aggregates the summary (label/value), role, state, and help information.
+    /// Subclasses may override this to provide specialized reading logic.
+    ///
+    /// - Returns: An array of `OutputSemantic` tokens.
     func read() async throws -> [OutputSemantic] {
         var content = try await readSummary()
         content.append(contentsOf: try await readRole())
@@ -27,8 +45,11 @@ import Output
         return content
     }
 
-    /// Reads a short description of the wrapped element.
-    /// - Returns: Semantically described output content.
+    /// Generates a concise summary of the element.
+    ///
+    /// The summary typically consists of the element's label (name) and its current value.
+    ///
+    /// - Returns: An array of `OutputSemantic` tokens.
     func readSummary() async throws -> [OutputSemantic] {
         var content = [OutputSemantic]()
         content.append(contentsOf: try await readLabel())
@@ -36,8 +57,14 @@ import Output
         return content
     }
 
-    /// Reads the accessibility label of the wrapped element.
-    /// - Returns: Semantically described output content.
+    /// Retrieves the label (name) of the element.
+    ///
+    /// It attempts to resolve the label in the following order:
+    /// 1. The `title` attribute.
+    /// 2. The `titleElement`'s title.
+    /// 3. The `description` attribute (fallback).
+    ///
+    /// - Returns: An array containing the label token, or empty if no label is found.
     func readLabel() async throws -> [OutputSemantic] {
         if let title = try await element.getAttribute(.title) as? String, !title.isEmpty {
             return [.label(title)]
@@ -51,8 +78,12 @@ import Output
         return []
     }
 
-    /// Reads the value of the wrapped element.
-    /// - Returns: Semantically described output content.
+    /// Retrieves the value of the element.
+    ///
+    /// Handles various value types including Booleans, Numbers, Strings, and AttributedStrings.
+    /// excessive details are handled by specific cases (e.g. selected text within a value).
+    ///
+    /// - Returns: An array of `OutputSemantic` tokens describing the value.
     func readValue() async throws -> [OutputSemantic] {
         var content = [OutputSemantic]()
         let value: Any? = if let value = try await element.getAttribute(.valueDescription) as? String, !value.isEmpty {
@@ -97,8 +128,12 @@ import Output
         return content
     }
 
-    /// Reads the accessibility role of the wrapped element.
-    /// - Returns: Semantically described output content.
+    /// Retrieves the role description.
+    ///
+    /// If a description is already present (used as label), the role might be suppressed or redundant.
+    /// Otherwise, provides the localized role description.
+    ///
+    /// - Returns: An array containing the role token.
     func readRole() async throws -> [OutputSemantic] {
         if let description = try await element.getAttribute(.description) as? String, !description.isEmpty {
             return []
@@ -108,8 +143,9 @@ import Output
         return []
     }
 
-    /// Reads the state of the wrapped element.
-    /// - Returns: Semantically described output content.
+    /// Retrieves the state of the element (Selected, Disabled, etc.).
+    ///
+    /// - Returns: An array of `OutputSemantic` tokens describing the state.
     func readState() async throws -> [OutputSemantic] {
         var output = [OutputSemantic]()
         if let selected = try await element.getAttribute(.selected) as? Bool, selected {
@@ -121,8 +157,9 @@ import Output
         return output
     }
 
-    /// Reads the help information of the wrapped element.
-    /// - Returns: Semantically described output content.
+    /// Retrieves help text associated with the element.
+    ///
+    /// - Returns: An array containing the help token.
     func readHelp() async throws -> [OutputSemantic] {
         if let help = try await element.getAttribute(.help) as? String, !help.isEmpty {
             return [.help(help)]

@@ -1,51 +1,79 @@
+//
+//  AccessEntity.swift
+//  Vosh
+//
+//  Created by Vosh Team.
+//
+
 import Element
 
-/// Convenience wrapper around an accessibility element.
-@AccessActor final class AccessEntity {
-    /// Wrapped accessibility element.
-    let element: Element
+/// A comprehensive wrapper around an `Element` that provides high-level accessibility navigation and logic.
+///
+/// `AccessEntity` abstracts the raw accessibility element to support intelligent navigation (finding "interesting" nodes),
+/// focus management, and hierarchy traversal rules (e.g., distinguishing between leaf nodes and containers).
+@AccessActor public final class AccessEntity {
+    
+    /// The underlying system accessibility element.
+    public let element: Element
 
-    /// Creates an accessibility entity wrapping the specified element.
-    /// - Parameter element: Element to wrap.
-    init(for element: Element) async throws {
+    /// Initializes a new access entity for the given element.
+    ///
+    /// - Parameter element: The raw `Element` to wrap.
+    public init(for element: Element) async throws {
         self.element = element
     }
 
-    /// Retrieves the interesting parent of this entity.
-    /// - Returns: Retrieved entity.
-    func getParent() async throws -> AccessEntity? {
-        guard let parent = try await Self.findParent(of: element) else {
+    /// Finds the nearest "interesting" parent of this entity.
+    ///
+    /// An "interesting" parent is one that conveys meaningful information to the user,
+    /// skipping over irrelevant containers or structural nodes.
+    ///
+    /// - Returns: The parent `AccessEntity`, or `nil` if no suitable parent exists.
+    public func getParent() async throws -> AccessEntity? {
+        guard let parent = try await Self.findParent(of: element, depth: 0) else {
             return nil
         }
         return try await AccessEntity(for: parent)
     }
 
-    /// Retrieves the first interesting child of this entity.
-    /// - Returns: Child of this entity.
-    func getFirstChild() async throws -> AccessEntity? {
-        guard let child = try await Self.findFirstChild(of: element, backwards: false) else {
+    /// Finds the first "interesting" child of this entity.
+    ///
+    /// This is used to "enter" a container or group.
+    ///
+    /// - Returns: The first interesting child `AccessEntity`, or `nil` if none are found.
+    public func getFirstChild() async throws -> AccessEntity? {
+        guard let child = try await Self.findFirstChild(of: element, backwards: false, depth: 0) else {
             return nil
         }
         return try await AccessEntity(for: child)
     }
 
-    /// Retrieves the next interesting sibling of this entity.
-    /// - Parameter backwards: Whether to move backwards.
-    /// - Returns: Sibling of this entity.
-    func getNextSibling(backwards: Bool) async throws -> AccessEntity? {
-        guard let element = try await Self.findNextSibling(of: element, backwards: backwards) else {
+    /// Finds the next or previous "interesting" sibling of this entity.
+    ///
+    /// This method traverses the accessibility hierarchy to find the next logical element
+    /// for navigation, potentially jumping out of the current container if necessary.
+    ///
+    /// - Parameter backwards: If `true`, searches for the previous sibling.
+    /// - Returns: The sibling `AccessEntity`, or `nil` if no more siblings exist.
+    public func getNextSibling(backwards: Bool) async throws -> AccessEntity? {
+        guard let element = try await Self.findNextSibling(of: element, backwards: backwards, depth: 0) else {
             return nil
         }
         return try await AccessEntity(for: element)
     }
 
-    /// Attempts to set the keyboard focus to the wrapped element.
-    func setKeyboardFocus() async throws {
+    /// Attempts to set the system keyboard focus to this element.
+    ///
+    /// This method handles various element roles and focus strategies, including ensuring
+    /// that focusable ancestors are correctly handled if the element itself cannot accept focus directly.
+    public func setKeyboardFocus() async throws {
         do {
             try await element.setAttribute(.isFocused, value: true)
             guard let role = try await element.getAttribute(.role) as? ElementRole else {
                 return
             }
+            // Some roles don't need additional checks or focus ancestor logic? 
+            // Or this switch is intended to filter roles that *should* be focused directly?
             switch role {
             case .button, .checkBox, .colorWell, .comboBox,
                     .dateField, .incrementer, .link, .menuBarItem,
@@ -58,6 +86,7 @@ import Element
             if let isFocused = try await element.getAttribute(.isFocused) as? Bool, isFocused {
                 return
             }
+            // Fallback: Try focusing the focusable ancestor
             if let focusableAncestor = try await element.getAttribute(.focusableAncestor) as? Element {
                 try await focusableAncestor.setAttribute(.isFocused, value: true)
             }
@@ -68,35 +97,41 @@ import Element
         }
     }
 
-    /// Checks whether this entity is a focusable ancestor of the provided entity.
-    /// - Parameter entity: Child entity.
-    /// - Returns: Whether the provided entity is a child of this entity.
-    func isInFocusGroup(of entity: AccessEntity) async throws -> Bool {
+    /// Checks if this entity belongs to the focus group of another entity.
+    ///
+    /// This is used to determine if two elements are effectively part of the same interactive control
+    /// (e.g., parts of the same composite widget).
+    ///
+    /// - Parameter entity: The potential child entity to check.
+    /// - Returns: `true` if `entity` is in the focus group of this entity.
+    public func isInFocusGroup(of entity: AccessEntity) async throws -> Bool {
         guard let element = try await element.getAttribute(.focusableAncestor) as? Element else {
             return false
         }
         return element == entity.element
     }
 
-    /// Looks for an interesting parent of the specified element.
-    /// - Parameter element: Element whose parent is to be searched.
-    /// - Returns: Interesting parent.
-    private static func findParent(of element: Element) async throws -> Element? {
+    /// Recursive helper to find an interesting parent.
+    private static func findParent(of element: Element, depth: Int) async throws -> Element? {
+        if depth > 20 { return nil }
         guard let parent = try await element.getAttribute(.parentElement) as? Element, try await !isRoot(element: parent) else {
             return nil
         }
         guard try await isInteresting(element: parent) else {
-            return try await findParent(of: parent)
+            return try await findParent(of: parent, depth: depth + 1)
         }
         return parent
     }
 
-    /// Looks for the next interesting sibling of the specified element.
+    /// Recursive helper to find the next interesting sibling.
+    ///
     /// - Parameters:
-    ///   - element: Element whose next sibling is to search.
-    ///   - backwards: Whehter to walk backwards.
-    /// - Returns: Found sibling, if any.
-    private static func findNextSibling(of element: Element, backwards: Bool) async throws -> Element? {
+    ///   - element: The starting element.
+    ///   - backwards: Direction of search.
+    ///   - depth: Current recursion depth.
+    /// - Returns: The next interesting sibling element.
+    private static func findNextSibling(of element: Element, backwards: Bool, depth: Int) async throws -> Element? {
+        if depth > 20 { return nil }
         guard let parent = try await element.getAttribute(.parentElement) as? Element else {
             return nil
         }
@@ -118,22 +153,25 @@ import Element
             if try await isInteresting(element: sibling) {
                 return sibling
             }
-            if let child = try await findFirstChild(of: sibling, backwards: backwards) {
+            if let child = try await findFirstChild(of: sibling, backwards: backwards, depth: depth + 1) {
                 return child
             }
         }
         guard try await !isRoot(element: parent), try await !isInteresting(element: parent) else {
             return nil
         }
-        return try await findNextSibling(of: parent, backwards: backwards)
+        return try await findNextSibling(of: parent, backwards: backwards, depth: depth + 1)
     }
 
-    /// Looks for the first interesting child of the specified element.
+    /// Recursive helper to find the first interesting child.
+    ///
     /// - Parameters:
-    ///   - element: Element to search.
-    ///   - backwards: Whether to walk backwards.
-    /// - Returns: Suitable child element.
-    private static func findFirstChild(of element: Element, backwards: Bool) async throws -> Element? {
+    ///   - element: The parent element.
+    ///   - backwards: Direction (rarely used for first child logic but supported).
+    ///   - depth: Current recursion depth.
+    /// - Returns: The first interesting child element.
+    private static func findFirstChild(of element: Element, backwards: Bool, depth: Int) async throws -> Element? {
+        if depth > 20 { return nil }
         if try await isLeaf(element: element) {
             return nil
         }
@@ -158,16 +196,20 @@ import Element
             if try await isLeaf(element: child) {
                 return nil
             }
-            if let child = try await findFirstChild(of: child, backwards: backwards) {
+            if let child = try await findFirstChild(of: child, backwards: backwards, depth: depth + 1) {
                 return child
             }
         }
         return nil
     }
 
-    /// Checks whether the specified element has accessibility relevance.
-    /// - Parameter element: Element to test.
-    /// - Returns: Result of the test.
+    /// Determines if an element is "interesting" for accessibility purposes.
+    ///
+    /// An element is interesting if it is focusable, has a title or description,
+    /// or has a specific role that implies interaction or content.
+    ///
+    /// - Parameter element: The element to evaluate.
+    /// - Returns: `true` if the element should be exposed to the user.
     private static func isInteresting(element: Element) async throws -> Bool {
         if let isFocused = try await element.getAttribute(.isFocused) as? Bool, isFocused {
             return true
@@ -200,9 +242,12 @@ import Element
         }
     }
 
-    /// Checks whether the specified element is considered to not have parents.
-    /// - Parameter element: Element to test.
-    /// - Returns: Result of the test.
+    /// Determines if an element acts as a navigation root (e.g., a Window or Menu Bar).
+    ///
+    /// Copied from standard practices, roots usually stop parent traversal.
+    ///
+    /// - Parameter element: The element to check.
+    /// - Returns: `true` if the element is a root.
     private static func isRoot(element: Element) async throws -> Bool {
         guard let role = try await element.getAttribute(.role) as? ElementRole else {
             return false
@@ -215,9 +260,13 @@ import Element
         }
     }
 
-    /// Checks whether the specified element is considered to not have children.
-    /// - Parameter element: Element to test.
-    /// - Returns: Result of the test.
+    /// Determines if an element should be treated as a leaf node (no children).
+    ///
+    /// Even if the element strictly has children in the accessibility tree (e.g. static text inside a button),
+    /// we often treat controls like buttons as leaves for navigation simplicity.
+    ///
+    /// - Parameter element: The element to check.
+    /// - Returns: `true` if the element is a leaf.
     private static func isLeaf(element: Element) async throws -> Bool {
         guard let role = try await element.getAttribute(.role) as? ElementRole else {
             return false
@@ -236,10 +285,11 @@ import Element
         }
     }
 
-    /// Checks whether the specified element has web area ancestry.
-    /// - Parameter element: Element to verify.
-    /// - Returns: Whether the element has a web ancestor.
-    private static func hasWebAncestor(element: Element) async throws -> Bool {
+    /// Recursively checks if an element is part of a web content area.
+    ///
+    /// - Parameter element: The element to check.
+    /// - Returns: `true` if any ancestor has the `.webArea` role.
+    static func hasWebAncestor(element: Element) async throws -> Bool {
         guard let parent = try await element.getAttribute(.parentElement) as? Element else {
             return false
         }

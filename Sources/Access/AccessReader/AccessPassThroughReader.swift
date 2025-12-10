@@ -1,10 +1,25 @@
+//
+//  AccessPassThroughReader.swift
+//  Vosh
+//
+//  Created by Vosh Team.
+//
+
 import Element
 import Output
 
-/// Accessibility reader for elements that must be ignored and have all of their children's summaries read instead.
+/// An accessibility reader that "passes through" to its children.
+///
+/// This reader ignores the container element itself and instead reads the summaries of all its children.
+/// This is useful for grouping elements that don't have semantic meaning themselves (e.g., a generic group)
+/// but contain meaningful content that should be presented as a single unit or sequence.
 @AccessActor class AccessPassThroughReader: AccessGenericReader {
-    /// Reads all of this element's children summaries.
-    /// - Returns: Semantic accessibility output.
+    
+    /// Reads and aggregates the summaries of all child elements.
+    ///
+    /// It attempts to use `childElementsInNavigationOrder` first, falling back to `childElements`.
+    ///
+    /// - Returns: An array of `OutputSemantic` tokens representing the combined summary of all children.
     override func readSummary() async throws -> [OutputSemantic] {
         let children = if let children = try await element.getAttribute(.childElementsInNavigationOrder) as? [Any?] {
             children
