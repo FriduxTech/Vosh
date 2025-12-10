@@ -183,9 +183,11 @@ import Output
                 while let next = await next() {
                     if Task.isCancelled { break }
                     
+                    // Fallback: Ensure element is visible (Say All Scroll)
+                    _ = try? await next.performAction("AXScrollToVisible")
+                    try? await next.setAttribute(.isFocused, value: true)
+                    
                     // Get text content
-                    // Check logic from AccessReader? Or simple dump?
-                    // We'll use simple attribute checks for speed
                     var text = ""
                     if let t = try? await next.getAttribute(.title) as? String { text = t }
                     else if let v = try? await next.getAttribute(.value) as? String { text = v }

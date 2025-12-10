@@ -68,6 +68,9 @@ import Output
     
     /// Buffer used for Word Echo processing.
     private var typingBuffer: String = ""
+    
+    /// Helper task to debounce modifier announcements.
+    private var modifierAnnouncementTask: Task<Void, Never>?
 
     /// Access to the Trackpad input handler.
     public var trackpad: InputTrackpad { InputTrackpad.shared }
@@ -159,24 +162,39 @@ import Output
     private func handleModifierStream() async {
         for await event in modifierListener.modifierStream {
             if event.isDown {
+                // Cancel previous announcement if we are chording modifiers (e.g. Ctrl... then Option)
+                modifierAnnouncementTask?.cancel()
+                
                 state.shouldInterrupt = regularKeys.isEmpty && modifierKeys.isEmpty && (event.key == .leftControl || event.key == .rightControl)
                 modifierKeys.insert(event.key)
                 
-                var shouldAnnounce = false
-                switch event.key {
-                case .leftShift, .rightShift: shouldAnnounce = announceShift
-                case .leftCommand, .rightCommand: shouldAnnounce = announceCommand
-                case .leftControl, .rightControl: shouldAnnounce = announceControl
-                case .leftOption, .rightOption: shouldAnnounce = announceOption
-                case .capsLock: shouldAnnounce = announceCapsLock
-                case .function: break
-                }
-                
-                if shouldAnnounce {
-                    Output.shared.announce(event.key.description)
+                // DEBOUNCE: Schedule announcement
+                modifierAnnouncementTask = Task {
+                    // Wait 200ms. If user presses another key (like 'C' for Cmd+C), 
+                    // handleEventTap -> processKeyDown will fire.
+                    // We need to check if a regular key was pressed in the meantime.
+                    try? await Task.sleep(nanoseconds: 200_000_000) 
+                    
+                    if Task.isCancelled { return }
+                    if !self.regularKeys.isEmpty { return } // User typed a shortcut
+                    
+                    var shouldAnnounce = false
+                    switch event.key {
+                    case .leftShift, .rightShift: shouldAnnounce = announceShift
+                    case .leftCommand, .rightCommand: shouldAnnounce = announceCommand
+                    case .leftControl, .rightControl: shouldAnnounce = announceControl
+                    case .leftOption, .rightOption: shouldAnnounce = announceOption
+                    case .capsLock: shouldAnnounce = announceCapsLock
+                    case .function: break
+                    }
+                    
+                    if shouldAnnounce {
+                        Output.shared.announce(event.key.description)
+                    }
                 }
                 continue
             }
+            
             modifierKeys.remove(event.key)
             if state.shouldInterrupt {
                 Output.shared.interrupt()
@@ -258,6 +276,9 @@ import Output
     
     /// Returns true if event should be swallowed.
     private func processKeyDown(_ event: CGEvent) -> Bool {
+        // User pressed a real key, silence any pending modifier announcement
+        modifierAnnouncementTask?.cancel()
+        
         let keyCode = Int64(event.getIntegerValueField(.keyboardEventKeycode))
         guard let inputKeyCode = InputKeyCode(rawValue: keyCode) else { return false }
         

@@ -1111,10 +1111,18 @@ import Output
     }
     
     private func readClipboard() async {
-        if let str = NSPasteboard.general.string(forType: .string) {
-            Output.shared.announce("Clipboard: \(str)")
-        } else {
+        guard let str = NSPasteboard.general.string(forType: .string), !str.isEmpty else {
             Output.shared.announce("Clipboard empty")
+            return
+        }
+        
+        let limit = 500
+        if str.count > limit {
+            let snippet = str.prefix(limit)
+            let remaining = str.count - limit
+            Output.shared.announce("Clipboard: \(snippet)... and \(remaining) more characters.")
+        } else {
+            Output.shared.announce("Clipboard: \(str)")
         }
     }
     
