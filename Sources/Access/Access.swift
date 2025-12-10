@@ -109,6 +109,12 @@ import Output
     
     /// Shared logger for the Access module.
     private static let logger = Logger()
+    
+    /// Engine for computing text differences in streaming output.
+    private let textDiff = TextDiff()
+    
+    /// Observer specifically for the currently focused element.
+    private var focusObserver: ElementObserver?
 
     /// Initializes the accessibility framework.
     ///
@@ -675,6 +681,10 @@ import Output
                 // Update State
                 lastSelectedRange = newRange
                 lastValue = value
+                
+                // Update State
+                lastSelectedRange = newRange
+                lastValue = value
             case .applicationDidAnnounce:
                 if let announcement = event.payload?[.announcement] as? String {
                     await Output.shared.announce(announcement)
@@ -707,6 +717,39 @@ import Output
                     break
                 }
                 self.focus = newFocus
+                
+                // Reset TextDiff for new context
+                await textDiff.reset()
+                
+                // Seed Diff engine with current text if applicable so we don't re-read it all as "new"
+                // unless we want to? Usually on focus we readFocus() which reads full content.
+                // So Diff should be updated to know "this is the baseline".
+                if let initialValue = try? await newFocus.entity.element.getAttribute(.value) as? String {
+                     _ = await textDiff.process(initialValue)
+                }
+                
+                // Monitor for Value Changes (Terminal / Text Field updates)
+                await focusObserver?.invalidate()
+                if let obs = try? await ElementObserver(element: event.subject) {
+                    try? await obs.subscribe(to: .valueDidUpdate)
+                    // We need to set the handler to route events back to this processing loop.
+                    // However, `ElementObserver` in `Access` usually routes to the MAIN observer stream if using same system?
+                    // No, `ElementObserver` logic (based on my memory) usually takes a closure or posts to notification center.
+                    // Access.swift's main observer uses `eventStream`.
+                    // Does ElementObserver exposure stream? Yes.
+                    // We need to merge this stream or spin up a task to forward events.
+                    
+                    // Since we can't easily merge streams in this legacy structure without refactoring init:
+                    // We will spawn a task to forward events to `handleEvent`.
+                    focusObserver = obs
+                    Task { @MainActor [weak self, weak obs] in
+                         guard let obs = obs else { return }
+                         for await evt in obs.eventStream {
+                             await self?.handleEvent(evt)
+                         }
+                    }
+                }
+
                 await readFocus()
             
             case .windowDidAppear:
@@ -746,6 +789,18 @@ import Output
                 }
                 
             case .valueDidUpdate:
+                // Diff Engine for Text
+                if focus?.entity.element == event.subject {
+                    if let newValue = try? await event.subject.getAttribute(.value) as? String {
+                        let diff = await textDiff.process(newValue)
+                        if !diff.isEmpty {
+                            await Output.shared.announce(diff)
+                        }
+                        lastValue = newValue
+                    }
+                }
+                
+                // Progress Bars
                 if progressFeedback != 0 {
                     let role = try? await event.subject.getAttribute(.role) as? ElementRole
                     if role == .progressIndicator {
