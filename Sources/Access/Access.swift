@@ -429,7 +429,7 @@ import Output
     ///
     /// Useful for drilling down into containers like lists, tables, or groups.
     /// Special handling is included for Math content.
-    public func focusFirstChild() async {
+    public func focusFirstChild(depth: Int = 0) async {
         do {
             guard let oldFocus = focus else {
                 let content = [OutputSemantic.noFocus]
@@ -470,7 +470,7 @@ import Output
             await Output.shared.convey(content)
             
             // Recursively attempt to drill down if the new child is also a wrapper
-            await attemptSmartInteraction()
+            await attemptSmartInteraction(depth: depth)
         } catch {
             await handleError(error)
         }
@@ -546,7 +546,9 @@ import Output
                 return
             }
             var content = [OutputSemantic]()
-            if processIdentifier != self.processIdentifier {
+            
+            // Fix: Re-initialize if PID changed OR if state is invalid (self-healing)
+            if processIdentifier != self.processIdentifier || self.application == nil || self.observer == nil {
                 let application = await Element(processIdentifier: processIdentifier)
                 let observer = try await ElementObserver(element: application)
                 
@@ -570,8 +572,12 @@ import Output
                 let applicationLabel = try await application.getAttribute(.title) as? String
                 content.append(.application(applicationLabel ?? "Application"))
             }
+            
+            // Graceful failure check
             guard let application = self.application, let observer = self.observer else {
-                fatalError("Logic failed")
+                // If we still failed to set up, abort without crashing
+                await Output.shared.announce("Focus Error")
+                return
             }
             
             // Check persistence first
@@ -1061,7 +1067,8 @@ import Output
     ///
     /// This method is called after navigation to automatically drill down into single-child containers
     /// or other "interesting" elements, reducing manual navigation steps.
-    public func attemptSmartInteraction() async {
+    public func attemptSmartInteraction(depth: Int = 0) async {
+        guard depth < 3 else { return }
         guard let currentFocusEntity = focus?.entity else { return }
         
         // Detach from the immediate navigation flow to avoid blocking UI/Speech
@@ -1077,7 +1084,7 @@ import Output
                          // Pass
                      }
                  }
-                 await self.focusFirstChild()
+                 await self.focusFirstChild(depth: depth + 1)
             }
         }
     }

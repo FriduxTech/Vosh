@@ -35,15 +35,14 @@ final class KeyboardHook {
         
         // Define C-compatible callback that bridges to the Swift instance
         let callback: CGEventTapCallBack = { (proxy, type, event, refcon) in
-            // Handle timeout
-            if type == .tapDisabledByTimeout {
+            // Handle timeout or user input disable
+            if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
                 if let refcon = refcon {
                     let this = Unmanaged<KeyboardHook>.fromOpaque(refcon).takeUnretainedValue()
                     this.reenableTap()
                 }
                 return nil
             }
-            // type == .tapDisabledByUserInput?
             
             guard let refcon = refcon else { return Unmanaged.passUnretained(event) }
             let this = Unmanaged<KeyboardHook>.fromOpaque(refcon).takeUnretainedValue()

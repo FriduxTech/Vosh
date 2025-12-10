@@ -168,15 +168,19 @@ import ApplicationServices
     /// - Parameter content: An array of `OutputSemantic` items describing the event.
     public func convey(_ content: [OutputSemantic], interrupt: Bool = true) {
         guard !isMuted else { return }
-        if isAnnouncing && interrupt {
+        
+        // Fix: Only queue if we DON'T want to interrupt and someone is speaking
+        if isAnnouncing && !interrupt {
             queued = content
             return
         }
-        queued = []
         
+        // Otherwise, clear queue and interrupt
+        queued = []
         if interrupt {
             synthesizer.stopSpeaking(at: .immediate)
             AudioEngine.shared.stopSpeech()
+            isAnnouncing = false
         }
         
         let processedContent = processVerbosity(content)
@@ -264,7 +268,6 @@ import ApplicationServices
     
     // MARK: - Private Helpers
     
-    /// Internal method to trigger spatial speech via `AudioEngine`.
     /// Internal method to trigger spatial speech via `AudioEngine`.
     private func speakSpatial(_ string: String, at x: CGFloat, interrupt: Bool) {
          if interrupt {
@@ -461,5 +464,13 @@ extension Output: AVSpeechSynthesizerDelegate {
                 convey(queued, interrupt: false)
             }
         }
+    }
+    
+    /// Delegate method called when the synthesizer is cancelled (interrupted).
+    nonisolated public func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+         Task { @MainActor in
+             isAnnouncing = false
+             queued = [] // Clear queue on cancel
+         }
     }
 }

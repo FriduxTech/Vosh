@@ -278,11 +278,19 @@ import Output
         // User pressed a real key, silence any pending modifier announcement
         modifierAnnouncementTask?.cancel()
         
+        // Fix: Silence existing speech immediately on any key press
+        Output.shared.interrupt()
+        
         let keyCode = Int64(event.getIntegerValueField(.keyboardEventKeycode))
         guard let inputKeyCode = InputKeyCode(rawValue: keyCode) else { return false }
         
-        state.shouldInterrupt = false
-        regularKeys.insert(inputKeyCode)
+        // Fix: Do not track modifiers in regularKeys to avoid stuck state
+        // Modifiers are tracked via flags/streams
+        let isModifier = (54...62).contains(keyCode) // Standard modifier range
+        if !isModifier {
+            state.shouldInterrupt = false
+            regularKeys.insert(inputKeyCode)
+        }
         
         if state.inputHelpModeEnabled {
              Output.shared.announce("Key code \(keyCode)")
