@@ -512,7 +512,7 @@ import Output
     private func refocus(processIdentifier: pid_t?) async {
         do {
             // Save current focus
-            if let currentApp = application, let currentFocus = focus {
+            if application != nil, let currentFocus = focus {
                  appFocusMap[self.processIdentifier] = currentFocus.entity.element
             }
             
@@ -549,20 +549,24 @@ import Output
             if processIdentifier != self.processIdentifier {
                 let application = await Element(processIdentifier: processIdentifier)
                 let observer = try await ElementObserver(element: application)
-                try await observer.subscribe(to: .applicationDidAnnounce)
-                try await observer.subscribe(to: .elementDidDisappear)
-                try await observer.subscribe(to: .elementDidGetFocus)
-                try await observer.subscribe(to: .windowDidAppear)
-                try await observer.subscribe(to: .valueDidUpdate)
-                try await observer.subscribe(to: .rowCountDidUpdate)
-                try await observer.subscribe(to: .loadComplete)
+                
+                // Subscribe to notifications with soft failure (try?)
+                // Native apps often don't support all roles/notifications (like .loadComplete)
+                try? await observer.subscribe(to: .applicationDidAnnounce)
+                try? await observer.subscribe(to: .elementDidDisappear)
+                try? await observer.subscribe(to: .elementDidGetFocus)
+                try? await observer.subscribe(to: .windowDidAppear)
+                try? await observer.subscribe(to: .valueDidUpdate)
+                try? await observer.subscribe(to: .rowCountDidUpdate)
+                try? await observer.subscribe(to: .loadComplete)
+                try? await observer.subscribe(to: .textSelectionDidUpdate) 
+                
                 self.application = application
                 self.processIdentifier = processIdentifier
-                try await observer.subscribe(to: .loadComplete)
-                self.application = application
-                self.processIdentifier = processIdentifier
+                
                 await self.observer?.invalidate()
                 self.observer = observer
+                
                 let applicationLabel = try await application.getAttribute(.title) as? String
                 content.append(.application(applicationLabel ?? "Application"))
             }
@@ -660,7 +664,7 @@ import Output
             // We use the optional binding from earlier if it existed, otherwise we skip
             if let f = self.focus, let t = targetEntity, f.entity.element == t.element {
                  await attemptSmartInteraction()
-            } else if targetEntity == nil, let f = self.focus {
+            } else if targetEntity == nil, self.focus != nil {
                  // If we didn't have a targetEntity var in scope (unlikely in this block structure but possible if logic split),
                  // we might still want to try.
                  // But in this specific flow, targetEntity is defined in the else block above...
@@ -884,21 +888,6 @@ import Output
                     }
                 }
                 
-            case .rowCountDidUpdate:
-                 if tableRowChangeFeedback != 0 {
-                      let role = try? await event.subject.getAttribute(.role) as? ElementRole
-                      if role == .table || role == .list {
-                          if let rows = try? await event.subject.getAttribute(.rows) as? [Any] {
-                               let rowCount = rows.count
-                               if tableRowChangeFeedback == 1 {
-                                   await Output.shared.announce("\(rowCount) rows")
-                               } else {
-                                   await SoundManager.shared.play(.texture)
-                               }
-                          }
-                      }
-                 }
-                 
             case .loadComplete:
                 // Handle Web Page Load
                 if webLoadFeedback == 2 { await SoundManager.shared.play(.success) }
@@ -1692,7 +1681,7 @@ import Output
                 }
                 
                 // Color
-                if let color = attrs[.foregroundColor] as? NSColor {
+                if attrs[.foregroundColor] is NSColor {
                     // Basic check for common colors or just generic
                      descriptions.append("Colored text")
                 }
