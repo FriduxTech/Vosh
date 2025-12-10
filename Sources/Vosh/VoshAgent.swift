@@ -65,7 +65,9 @@ import Output
         // MARK: - Reading
         case readWindow, readEntireWindow, readFromTop, readFromCursor, readClipboard, readTimeDate
         case readLine, spellLine, readWord, spellWord, readCharacter, readPhonetic
+
         case describeImage, ocrScreen, askVosh
+        case copyLastSpoken, readTextAttributes
         
         // MARK: - Mouse Control
         case moveMouseToFocus, moveMouseAndClick
@@ -140,6 +142,20 @@ import Output
         reg.register(BlockCommand { agent in await agent.describeImage() }, for: VoshCommand.describeImage.rawValue)
         reg.register(BlockCommand { agent in await agent.ocrScreen() }, for: VoshCommand.ocrScreen.rawValue)
         reg.register(BlockCommand { [unowned self] _ in await self.askVosh() }, for: VoshCommand.askVosh.rawValue)
+        
+        reg.register(BlockCommand { _ in
+            if let text = Output.shared.lastSpoken {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+                Output.shared.announce("Copied: \(text)")
+            } else {
+                Output.shared.announce("Nothing to copy")
+            }
+        }, for: VoshCommand.copyLastSpoken.rawValue)
+        
+        reg.register(BlockCommand { agent in 
+            await agent.accessibility.readTextAttributes() 
+        }, for: VoshCommand.readTextAttributes.rawValue)
         
         // Mouse
         reg.register(BlockCommand { agent in await agent.moveMouseToFocus() }, for: VoshCommand.moveMouseToFocus.rawValue)
@@ -285,6 +301,9 @@ import Output
         // App List is Shift+A. Let's use Shift+Q ("Query")? or Shift+Slash?
         // Let's use Shift+Slash (Question Mark)
         bind(.askVosh, key: .keyboardSlashAndQuestion, shift: true)
+        
+        bind(.copyLastSpoken, key: .keyboardC, shift: true)
+        bind(.readTextAttributes, key: .keyboardF)
         
         // Double press logic needs custom handler still or we define commands for "Read Line" and "Spell Line" separately?
         // Dynamic Key Resolution

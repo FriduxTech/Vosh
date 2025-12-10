@@ -1590,6 +1590,50 @@ import Output
         }
     }
     
+    /// Reads formatting attributes of the text at the current cursor position.
+    public func readTextAttributes() async {
+        guard let focus = focus else { return }
+        
+        // 1. Determine Range
+        var targetRange = CFRange(location: 0, length: 1)
+        if let sel = try? await focus.entity.element.getAttribute(.selectedTextRange) as? Range<Int> {
+            targetRange = CFRange(location: CFIndex(sel.lowerBound), length: max(1, CFIndex(sel.count)))
+        }
+        
+        // 2. Query Attributed String
+        // We use the raw legacyValue of CFRange for the query
+        let rangeValue = AXValueCreate(.cfRange, &targetRange)! 
+        
+        if let attrString = try? await focus.entity.element.queryParameterizedAttribute(.attributedStringForRange, input: rangeValue) as? AttributedString {
+            // 3. Parse Attributes (NSAttributedString)
+            let nsStr = NSAttributedString(attrString)
+            if nsStr.length > 0 {
+                let attrs = nsStr.attributes(at: 0, effectiveRange: nil)
+                
+                var descriptions = [String]()
+                
+                // Font
+                if let font = attrs[.font] as? NSFont {
+                    descriptions.append("Font \(font.displayName ?? font.fontName)")
+                    descriptions.append("\(Int(font.pointSize)) point")
+                }
+                
+                // Color
+                if let color = attrs[.foregroundColor] as? NSColor {
+                    // Basic check for common colors or just generic
+                     descriptions.append("Colored text")
+                }
+                
+                // Style
+                
+                let desc = descriptions.isEmpty ? "Normal text" : descriptions.joined(separator: ", ")
+                await Output.shared.announce(desc)
+                return
+            }
+        }
+        await Output.shared.announce("No formatting info")
+    }
+    
     // MARK: - Helpers for VoshAgent (Avoiding Element import)
     
     public func getFocusedWindowTitle() async -> String? {

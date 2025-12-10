@@ -41,8 +41,42 @@ import Output
         var content = try await readSummary()
         content.append(contentsOf: try await readRole())
         content.append(contentsOf: try await readState())
+        content.append(contentsOf: try await readPosition()) // NEW
         content.append(contentsOf: try await readHelp())
         return content
+    }
+
+    /// Retrieves position information (e.g., "3 of 5") if applicable.
+    func readPosition() async throws -> [OutputSemantic] {
+        // Only relevant for items in a set (Rows, MenuItems, RadioButtons, etc.)
+        guard let role = try? await element.getAttribute(.role) as? ElementRole else { return [] }
+        
+        let validRoles: Set<ElementRole> = [.row, .menuItem, .radioButton, .cell, .staticText] 
+        // staticText included because lists often expose items as text
+        
+        if validRoles.contains(role) || role == .unknown {
+            // Try to get Index
+            if let index = try? await element.getAttribute(.index) as? Int {
+                // Index is usually 0-based
+                let displayIndex = index + 1
+                var total = 0
+                
+                // Try to get total from parent
+                if let parent = try? await element.getAttribute(.parentElement) as? Element {
+                    // Optimized: Check specific count attributes first
+                    if let rows = try? await parent.getAttribute(.rows) as? [Any] {
+                        total = rows.count
+                    } else if let children = try? await parent.getAttribute(.childElements) as? [Any] {
+                        total = children.count
+                    }
+                }
+                
+                if total > 0 {
+                    return [.stringValue("item \(displayIndex) of \(total)")]
+                }
+            }
+        }
+        return []
     }
 
     /// Generates a concise summary of the element.

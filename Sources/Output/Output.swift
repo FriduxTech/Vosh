@@ -327,9 +327,15 @@ import ApplicationServices
         return processed
     }
 
+    /// The most recent string announced by Vosh.
+    public private(set) var lastSpoken: String?
+
     /// Internal speech primitive. Handles pre-processing like pronunciations, number style, and "Cap" prefixes.
     private func speak(_ string: String) {
         var text = applyPronunciations(string)
+        
+        // Update History
+        lastSpoken = text
         
         // Number Style
         if numberStyle == 1 { // Digits
