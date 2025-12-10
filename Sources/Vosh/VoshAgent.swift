@@ -88,6 +88,7 @@ import Output
         
         // MARK: - Interaction
         case activate // Enter/Click
+        case smartTab // Tab for navigation/interaction
     }
     
     // MARK: - Command Execution
@@ -175,7 +176,7 @@ import Output
         
         // System
         reg.register(BlockCommand { agent in await agent.accessMenuBar() }, for: VoshCommand.menuBar.rawValue)
-        reg.register(BlockCommand { agent in await agent.accessWindowMenu() }, for: VoshCommand.windowMenu.rawValue)
+        reg.register(BlockCommand { agent in await agent.accessWindowMenu() }, for: VoshCommand.windowMenu.rawValue) // TODO: Check if windowMenu needs similar fix
         reg.register(BlockCommand { agent in await agent.accessContextMenu() }, for: VoshCommand.contextMenu.rawValue)
         reg.register(BlockCommand { agent in await agent.accessDock() }, for: VoshCommand.dock.rawValue)
         reg.register(BlockCommand { agent in await agent.announceApplicationName() }, for: VoshCommand.applicationName.rawValue)
@@ -241,6 +242,7 @@ import Output
         
         // Interaction
         reg.register(BlockCommand { agent in await agent.performActivate() }, for: VoshCommand.activate.rawValue)
+        reg.register(BlockCommand { agent in await agent.handleTab(backwards: false) }, for: VoshCommand.smartTab.rawValue)
     }
     
     /// Activates the currently focused element (Click/Press).
@@ -324,27 +326,38 @@ import Output
         bind(.readSelection, key: .keyboardSpace, shift: true)
         
         // Double press logic needs custom handler still or we define commands for "Read Line" and "Spell Line" separately?
-        // Dynamic Key Resolution
-        var lineKey = InputKeyCode.keyboardL
-        if let mapping = Preferences.shared.keyMapping[VoshCommand.readLine.rawValue],
-           let k = InputKeyCode(rawValue: Int64(mapping.keyCode)) {
-            lineKey = k
+        // Text Granularity & Double Press Logic
+        func bindGranularity(readCmd: VoshCommand, spellCmd: VoshCommand, defaultKey: InputKeyCode) {
+            // 1. Check if user has explicitly separated them (mapped Spell to a different key)
+            let readMap = Preferences.shared.keyMapping[readCmd.rawValue]
+            let spellMap = Preferences.shared.keyMapping[spellCmd.rawValue]
+            
+            let readKey = readMap.flatMap { InputKeyCode(rawValue: Int64($0.keyCode)) } ?? defaultKey
+            let spellKey = spellMap.flatMap { InputKeyCode(rawValue: Int64($0.keyCode)) } ?? defaultKey
+            
+            // Scenario A: They are different keys (User separated them or requested specific spell key)
+            // Note: If spellMap is nil, it defaults to defaultKey. 
+            // We only want to separate if user explicitly set spellCmd OR if readCmd changed but spellCmd didn't track?
+            // Conservative: If spellMap is SET and different from readKey, split.
+            if let _ = spellMap, readKey != spellKey {
+                bind(readCmd, key: readKey)
+                bind(spellCmd, key: spellKey)
+                return
+            }
+            
+            // Scenario B: Default / Same Key behavior (Single vs Double)
+           Input.shared.bindKey(key: readKey) { [weak self] in 
+                await self?.handleDoublePress(
+                    key: readKey, 
+                    single: { await self?.perform(readCmd) }, 
+                    double: { await self?.perform(spellCmd) }
+                ) 
+            }
         }
-        Input.shared.bindKey(key: lineKey) { [weak self] in await self?.handleDoublePress(key: lineKey, single: { await self?.perform(.readLine) }, double: { await self?.perform(.spellLine) }) }
 
-        var wordKey = InputKeyCode.keyboardK
-        if let mapping = Preferences.shared.keyMapping[VoshCommand.readWord.rawValue],
-           let k = InputKeyCode(rawValue: Int64(mapping.keyCode)) {
-            wordKey = k
-        }
-        Input.shared.bindKey(key: wordKey) { [weak self] in await self?.handleDoublePress(key: wordKey, single: { await self?.perform(.readWord) }, double: { await self?.perform(.spellWord) }) }
-
-        var charKey = InputKeyCode.keyboardSemiColonAndColon
-        if let mapping = Preferences.shared.keyMapping[VoshCommand.readCharacter.rawValue],
-           let k = InputKeyCode(rawValue: Int64(mapping.keyCode)) {
-            charKey = k
-        }
-        Input.shared.bindKey(key: charKey) { [weak self] in await self?.handleDoublePress(key: charKey, single: { await self?.perform(.readCharacter) }, double: { await self?.perform(.readPhonetic) }) }
+        bindGranularity(readCmd: .readLine, spellCmd: .spellLine, defaultKey: .keyboardL)
+        bindGranularity(readCmd: .readWord, spellCmd: .spellWord, defaultKey: .keyboardK)
+        bindGranularity(readCmd: .readCharacter, spellCmd: .readPhonetic, defaultKey: .keyboardSemiColonAndColon)
         
         // System
         bind(.menuBar, key: .keyboardCommaAndLeftAngle)
@@ -412,8 +425,43 @@ import Output
         
         // Tab
          if Preferences.shared.autoInteractOnTab {
-             Input.shared.bindKey(browseMode: false, key: .keyboardTab) { [weak self] in await self?.handleTab(backwards: false) }
-             Input.shared.bindKey(browseMode: false, shiftModifier: true, key: .keyboardTab) { [weak self] in await self?.handleTab(backwards: true) }
+             // Bind smartTab instead of direct handleTab to allow remapping if user desires (via smartTab command)
+             // Default is Tab / Shift+Tab
+             bind(.smartTab, key: .keyboardTab)
+             bind(.smartTab, key: .keyboardTab, shift: true)
+             // Note: shift logic is handled inside handleTab usually or passed via command arg? 
+             // We need separate command or inspect event. 
+             // Regrettably, standard 'bind' doesn't pass args.
+             // But handleTab(backwards: Boolean) needs to know.
+             // We'll rely on NSEvent modifiers in the handler OR
+             // bind closure directly checking modifiers? 
+             // Actually, simplest is to bind direct keys here if not mapped, 
+             // OR use granular commands `nextInteractiveElement` / `prevInteractiveElement`.
+             // For now, let's keep direct bind but wrap in command check?
+             // Reverting to direct bind for Shift+Tab distinction unless we add `smartShiftTab`.
+             
+             // Let's implement dynamic check inside the closure:
+             /*
+             bind(.smartTab, key: .keyboardTab) // user maps "Smart Tab" -> Key
+             */
+             // Issue: How to distinquish forward/back?
+             // We can register two commands? `smartTabForward`, `smartTabBackward`?
+             // Or just check event flags in `handleTab`.
+             
+             // Current solution:
+             // If user maps .smartTab, we use that for Forward.
+             // We don't have .smartShiftTab yet.
+             // Let's stick to the previous hardcoded logic BUT use `bind` helper so it checks preference for .smartTab at least?
+             // But `.smartTab` implies forward.
+             
+             // OK, compromise: We bind .smartTab to Tab.
+             // For Shift+Tab, we bind it manually if not mapped, or add .smartShiftTab.
+             // User requested: "Bind it dynamically".
+             
+             bind(.smartTab, key: .keyboardTab)
+             // For backward, we assume Shift + whatever key SmartTab is.
+             // Or explicitly bind Shift+Tab
+              Input.shared.bindKey(browseMode: false, shiftModifier: true, key: .keyboardTab) { [weak self] in await self?.handleTab(backwards: true) }
          }
     }
     
@@ -473,21 +521,31 @@ import Output
         Input.shared.setNumpadCommanderEnabled(Preferences.shared.numpadCommanderEnabled)
         Input.shared.onNumpadCommand = { [weak self] keyCode in
             guard let self = self else { return }
-            switch keyCode {
-            case .keypad1AndEnd: await self.perform(.windowMenu) // "1 = window menu bar"
-            case .keypad2AndDownArrow: await self.perform(.rotorDown) // "2 = cursor down"
-            case .keypad3AndPageDown: await self.perform(.contextMenu) // "3 = right click"
-            case .keypad4AndLeftArrow: await self.perform(.previousItem) // "4 = cursor left"
-            case .keypad5: await self.perform(.activate) // "5 = activate"
-            case .keypad6AndRightArrow: await self.perform(.nextItem) // "6 = cursor right"
-            case .keypad7AndHome: await self.perform(.parent) // "7 = out of current item"
-            case .keypad8AndUpArrow: await self.perform(.rotorUp) // "8 = cursor up"
-            case .keypad9AndPageUp: await self.perform(.firstChild) // "9 = enter item"
-            case .keypadEquals: await self.perform(.menuBar) // "= = Mac menu bar"
-            case .keypadDecimalAndDelete: await self.perform(.dock) // ". = dock"
-            case .keypadDivide: await self.perform(.settings) // "/ = VOSH settings"
-            default: break
+            
+            // Helper to check if a specific command maps to this key code (either by default or user pref)
+            func isTrigger(for command: VoshCommand, defaultKey: InputKeyCode) async -> Bool {
+                // 1. Check User Preference safely on MainActor
+                let mapping = await MainActor.run { Preferences.shared.keyMapping[command.rawValue] }
+                if let m = mapping {
+                    return m.keyCode == Int(keyCode.rawValue)
+                }
+                // 2. Fallback to Default
+                return keyCode == defaultKey
             }
+            
+            // Dynamic Dispatch
+            if await isTrigger(for: .windowMenu, defaultKey: .keypad1AndEnd) { await self.perform(.windowMenu) }
+            else if await isTrigger(for: .rotorDown, defaultKey: .keypad2AndDownArrow) { await self.perform(.rotorDown) }
+            else if await isTrigger(for: .contextMenu, defaultKey: .keypad3AndPageDown) { await self.perform(.contextMenu) }
+            else if await isTrigger(for: .previousItem, defaultKey: .keypad4AndLeftArrow) { await self.perform(.previousItem) }
+            else if await isTrigger(for: .activate, defaultKey: .keypad5) { await self.perform(.activate) }
+            else if await isTrigger(for: .nextItem, defaultKey: .keypad6AndRightArrow) { await self.perform(.nextItem) }
+            else if await isTrigger(for: .parent, defaultKey: .keypad7AndHome) { await self.perform(.parent) }
+            else if await isTrigger(for: .rotorUp, defaultKey: .keypad8AndUpArrow) { await self.perform(.rotorUp) }
+            else if await isTrigger(for: .firstChild, defaultKey: .keypad9AndPageUp) { await self.perform(.firstChild) }
+            else if await isTrigger(for: .menuBar, defaultKey: .keypadEquals) { await self.perform(.menuBar) }
+            else if await isTrigger(for: .dock, defaultKey: .keypadDecimalAndDelete) { await self.perform(.dock) }
+            else if await isTrigger(for: .settings, defaultKey: .keypadDivide) { await self.perform(.settings) }
         }
     }
     
@@ -1032,8 +1090,16 @@ import Output
     /// Moves focus to the System Menu Bar.
     private func accessMenuBar() async {
         Output.shared.announce("Menu Bar")
-        // Control + F2
-        await performSystemKey(keyCode: 120, modifiers: .maskControl) // F2 = 120 (0x78)
+        // Try direct AX focus first
+        if let menuBar = try? await accessibility.application?.getAttribute(.menuBar) as? Element {
+            // Attempt to focus
+            do {
+                try await menuBar.setAttribute(.isFocused, value: true)
+                return
+            } catch {}
+        }
+        // Fallback: Control + F2
+        await performSystemKey(keyCode: 120, modifiers: .maskControl)
     }
     
     private func accessWindowMenu() async {
@@ -1048,8 +1114,17 @@ import Output
     
     private func accessDock() async {
         Output.shared.announce("Dock")
-        // Control + F3
-        await performSystemKey(keyCode: 99, modifiers: .maskControl) // F3 = 99 (0x63)
+        
+        // Direct focus via running application
+        if let dockApp = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.dock" }) {
+            // Activate expecting focus
+            dockApp.activate(options: .activateIgnoringOtherApps)
+            // We might want to verify focus via accessibility if needed, 
+            // but activating the Dock app usually brings it to front.
+        } else {
+            // Fallback: Control + F3
+            await performSystemKey(keyCode: 99, modifiers: .maskControl) // F3 = 99 (0x63)
+        }
     }
     
     private func accessNotificationCenter() async {

@@ -512,19 +512,25 @@ final class SettingsWindow: NSWindowController {
         resetBtn.frame = NSRect(x: 20, y: 450, width: 150, height: 24)
         keysView.addSubview(resetBtn)
         
-        addLabel(to: keysView, text: "Current Mapping (Read Only):", y: 420, width: 200)
+        addLabel(to: keysView, text: "Format: command: KeyCode <int> Mods <uint>", y: 420, width: 300)
         
-        let keysScroll = NSScrollView(frame: NSRect(x: 20, y: 20, width: 400, height: 390))
+        let keysScroll = NSScrollView(frame: NSRect(x: 20, y: 60, width: 400, height: 350))
         keysScroll.hasVerticalScroller = true
         let keysContent = NSTextView(frame: keysScroll.bounds)
-        keysContent.isEditable = false
+        keysContent.isEditable = true
+        keysContent.isRichText = false
         // Load mappings
         let mapping = preferences.keyMapping
         let mappingText = mapping.sorted(by: { $0.key < $1.key }).map { "\($0.key): KeyCode \($0.value.keyCode) Mods \($0.value.modifiers)" }.joined(separator: "\n")
-        keysContent.string = mappingText.isEmpty ? "Default System Bindings Active (Not explicitly mapped)" : mappingText
+        keysContent.string = mappingText.isEmpty ? "# Default Bindings Active. Add overrides below:\n# example: nextItem: KeyCode 124 Mods 0" : mappingText
+        self.shortcutsTextView = keysContent // Save ref
         
         keysScroll.documentView = keysContent
         keysView.addSubview(keysScroll)
+        
+        let saveKeysBtn = NSButton(title: "Save Shortcuts", target: self, action: #selector(saveShortcuts(_:)))
+        saveKeysBtn.frame = NSRect(x: 320, y: 20, width: 100, height: 24)
+        keysView.addSubview(saveKeysBtn)
         
         keysItem.view = keysView
         tabView.addTabViewItem(keysItem)
@@ -719,9 +725,47 @@ final class SettingsWindow: NSWindowController {
     // Shortcuts Tab
     @objc private func resetShortcuts(_ sender: NSButton) {
         preferences.keyMapping = [:] // Triggers default
+        shortcutsTextView?.string = "# Defaults Restored"
+    }
+    
+    @objc private func saveShortcuts(_ sender: NSButton) {
+        guard let text = shortcutsTextView?.string else { return }
+        var newMap = [String: Preferences.KeyShortcut]()
+        
+        text.enumerateLines { line, _ in
+            // Parse: command: KeyCode 123 Mods 0
+            if line.trimmingCharacters(in: .whitespaces).hasPrefix("#") { return }
+            
+            let parts = line.split(separator: ":", maxSplits: 1)
+            if parts.count == 2 {
+                let cmd = String(parts[0]).trimmingCharacters(in: .whitespaces)
+                let rest = String(parts[1])
+                
+                // Regex or simple split? Simple split for now.
+                // Expecting "KeyCode <int> Mods <int>"
+                let components = rest.split(separator: " ")
+                var code: Int?
+                var mods: UInt?
+                
+                for (i, comp) in components.enumerated() {
+                   if comp == "KeyCode" && i + 1 < components.count {
+                       code = Int(components[i+1])
+                   }
+                   if comp == "Mods" && i + 1 < components.count {
+                       mods = UInt(components[i+1])
+                   }
+                }
+                
+                if let c = code, let m = mods, !cmd.isEmpty {
+                    newMap[cmd] = Preferences.KeyShortcut(keyCode: c, modifiers: Int(m))
+                }
+            }
+        }
+        preferences.keyMapping = newMap
     }
 
     private var pronunciationTextView: NSTextView?
+    private var shortcutsTextView: NSTextView?
     
     // MARK: - Handlers
     
