@@ -1593,7 +1593,7 @@ import Output
                      if let reader = try? await AccessReader(for: element) {
                          let content = try? await reader.read()
                          if let c = content, !c.isEmpty {
-                             await Output.shared.convey(c)
+                             await Output.shared.convey(c, interrupt: false)
                          }
                      }
                 }
@@ -1713,9 +1713,14 @@ import Output
 
     public func readAllWeb() async {
         guard let web = webAccess else { return }
-        for await text in await web.readFromCursor() {
-            await Output.shared.announce(text)
+        for await text in web.readFromCursor() {
+            await Output.shared.announce(text, interrupt: false)
         }
+    }
+    
+    public func getSelectedText() async -> String? {
+        guard let focus = focus else { return nil }
+        return try? await focus.entity.element.getAttribute(.selectedText) as? String
     }
 
     // MARK: - Review Cursor Navigation

@@ -22,6 +22,10 @@ import Output
     /// The current element in the virtual linear navigation.
     private var currentElement: Element
     
+    /// Cache of the last fetched siblings to optimize list traversal O(N) -> O(1).
+    /// Stores: (Parent Element, List of Child Elements)
+    private var siblingsCache: (parent: Element, children: [Element])?
+    
     /// Initializes a web accessor for a specific web area.
     ///
     /// - Parameter root: The root element of the web content.
@@ -237,14 +241,20 @@ import Output
     }
     
     private func getNextSibling(of element: Element) async -> Element? {
-        // AX doesn't have fast "nextSibling" often, need parent's children.
         guard let parent = try? await element.getAttribute(.parentElement) as? Element else { return nil }
-        guard let children = try? await parent.getAttribute(.childElements) as? [Element] else { return nil }
+        
+        let children: [Element]
+        if let cache = siblingsCache, cache.parent == parent {
+            children = cache.children
+        } else {
+             guard let fetched = try? await parent.getAttribute(.childElements) as? [Element] else { return nil }
+             children = fetched
+             siblingsCache = (parent, children)
+        }
         
         if let index = children.firstIndex(of: element), index + 1 < children.count {
             let sibling = children[index + 1]
             if await isInteresting(sibling) { return sibling }
-            // If uninteresting, drill down
             // If uninteresting, drill down
             if let child = await getFirstChild(of: sibling) { return child }
             return await getNextSibling(of: sibling)
@@ -254,7 +264,15 @@ import Output
     
     private func getPreviousSibling(of element: Element) async -> Element? {
         guard let parent = try? await element.getAttribute(.parentElement) as? Element else { return nil }
-        guard let children = try? await parent.getAttribute(.childElements) as? [Element] else { return nil }
+        
+        let children: [Element]
+        if let cache = siblingsCache, cache.parent == parent {
+            children = cache.children
+        } else {
+             guard let fetched = try? await parent.getAttribute(.childElements) as? [Element] else { return nil }
+             children = fetched
+             siblingsCache = (parent, children)
+        }
         
         if let index = children.firstIndex(of: element), index > 0 {
              let sibling = children[index - 1]

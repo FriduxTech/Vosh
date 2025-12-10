@@ -68,6 +68,7 @@ import Output
 
         case describeImage, ocrScreen, askVosh
         case copyLastSpoken, readTextAttributes
+        case readSelection
         case announceContext, historyPrevious, historyNext
         
         // MARK: - Mouse Control
@@ -157,6 +158,8 @@ import Output
         reg.register(BlockCommand { agent in 
             await agent.accessibility.readTextAttributes() 
         }, for: VoshCommand.readTextAttributes.rawValue)
+
+        reg.register(BlockCommand { agent in await agent.readSelection() }, for: VoshCommand.readSelection.rawValue)
 
         reg.register(BlockCommand { agent in 
             let context = await agent.accessibility.getContextDescription()
@@ -318,6 +321,7 @@ import Output
         
         bind(.copyLastSpoken, key: .keyboardC, shift: true)
         bind(.readTextAttributes, key: .keyboardF)
+        bind(.readSelection, key: .keyboardSpace, shift: true)
         
         // Double press logic needs custom handler still or we define commands for "Read Line" and "Spell Line" separately?
         // Dynamic Key Resolution
@@ -954,6 +958,19 @@ import Output
         }
     }
     
+    // MARK: - Reading helpers
+    
+
+    
+    private func readSelection() async {
+        if let sel = await accessibility.getSelectedText() {
+            Output.shared.announce("Selection: \(sel)")
+        } else {
+            Output.shared.announce("No selection")
+        }
+    }
+    
+
     /// Opens the Vosh main menu.
     private func openVoshMenu() async {
         let items = ["Preferences", "Check for Updates", "Quit Vosh"]

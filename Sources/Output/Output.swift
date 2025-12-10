@@ -131,7 +131,8 @@ import ApplicationServices
     /// - Parameters:
     ///   - announcement: The raw text string to speak.
     ///   - x: Optional spatial position override. If nil, uses `setSpatialPosition` value or center.
-    public func announce(_ announcement: String, at x: CGFloat? = nil) {
+    ///   - interrupt: Whether to immediately stop previous speech (default: true).
+    public func announce(_ announcement: String, at x: CGFloat? = nil, interrupt: Bool = true) {
         // Show visual HUD
         VoshHUD.shared.show(announcement)
         SpeechLogger.shared.log(announcement)
@@ -139,15 +140,20 @@ import ApplicationServices
         guard !isMuted else { return }
         
         let position = x ?? currentSpatialPosition ?? 0.5
+        let text = applyPronunciations(announcement)
         
         if AudioEngine.shared.isSpatialEnabled {
              // Spatial Path
-             speakSpatial(applyPronunciations(announcement), at: position)
+             speakSpatial(text, at: position, interrupt: interrupt)
         } else {
              // Standard Path
-             let utterance = AVSpeechUtterance(string: applyPronunciations(announcement))
+             let utterance = AVSpeechUtterance(string: text)
              applyConfig(to: utterance)
-             synthesizer.stopSpeaking(at: .immediate)
+             
+             if interrupt {
+                 synthesizer.stopSpeaking(at: .immediate)
+                 isAnnouncing = false
+             }
              isAnnouncing = true
              synthesizer.speak(utterance)
         }
@@ -160,15 +166,18 @@ import ApplicationServices
     /// and speaks the text content.
     ///
     /// - Parameter content: An array of `OutputSemantic` items describing the event.
-    public func convey(_ content: [OutputSemantic]) {
+    public func convey(_ content: [OutputSemantic], interrupt: Bool = true) {
         guard !isMuted else { return }
-        if isAnnouncing {
+        if isAnnouncing && interrupt {
             queued = content
             return
         }
         queued = []
-        synthesizer.stopSpeaking(at: .immediate)
-        AudioEngine.shared.stopSpeech()
+        
+        if interrupt {
+            synthesizer.stopSpeaking(at: .immediate)
+            AudioEngine.shared.stopSpeech()
+        }
         
         let processedContent = processVerbosity(content)
         var speechBuffer = [String]()
@@ -241,7 +250,7 @@ import ApplicationServices
         
         if !speechBuffer.isEmpty {
             let fullText = speechBuffer.joined(separator: ", ")
-            speak(fullText)
+            speak(fullText, interrupt: interrupt)
         }
     }
     
@@ -256,9 +265,11 @@ import ApplicationServices
     // MARK: - Private Helpers
     
     /// Internal method to trigger spatial speech via `AudioEngine`.
-    private func speakSpatial(_ string: String, at x: CGFloat) {
-         // Stop previous
-         AudioEngine.shared.stopSpeech() 
+    /// Internal method to trigger spatial speech via `AudioEngine`.
+    private func speakSpatial(_ string: String, at x: CGFloat, interrupt: Bool) {
+         if interrupt {
+             AudioEngine.shared.stopSpeech() 
+         }
          isAnnouncing = true
          
          let utterance = AVSpeechUtterance(string: string)
@@ -360,7 +371,7 @@ import ApplicationServices
     }
 
     /// Internal speech primitive. Handles pre-processing like pronunciations, number style, and "Cap" prefixes.
-    private func speak(_ string: String) {
+    private func speak(_ string: String, interrupt: Bool = true) {
         var text = applyPronunciations(string)
         
         // Update History
@@ -382,7 +393,7 @@ import ApplicationServices
              text = text.replacingOccurrences(of: "([A-Z])", with: " Cap $1", options: .regularExpression)
         }
         
-        speakInternal(text)
+        speakInternal(text, interrupt: interrupt)
     }
     
     // MARK: - History Navigation
@@ -413,7 +424,7 @@ import ApplicationServices
     }
     
     /// Helper to speak without polluting history.
-    private func speakInternal(_ text: String, history: Bool = false) {
+    private func speakInternal(_ text: String, history: Bool = false, interrupt: Bool = true) {
         // Notify listener
         let finalText = text
         Task { @MainActor in
@@ -424,13 +435,15 @@ import ApplicationServices
         }
         
         if AudioEngine.shared.isSpatialEnabled && !history {
-            speakSpatial(text, at: currentSpatialPosition ?? 0.5)
+            speakSpatial(text, at: currentSpatialPosition ?? 0.5, interrupt: interrupt)
         } else {
             let utterance = AVSpeechUtterance(string: text)
             applyConfig(to: utterance)
             
+            if interrupt {
+                synthesizer.stopSpeaking(at: .immediate)
+            }
             isAnnouncing = true
-            synthesizer.stopSpeaking(at: .immediate)
             synthesizer.speak(utterance)
         }
         // Show visual HUD
@@ -445,7 +458,7 @@ extension Output: AVSpeechSynthesizerDelegate {
         Task { @MainActor in
             if isAnnouncing {
                 isAnnouncing = false
-                convey(queued)
+                convey(queued, interrupt: false)
             }
         }
     }
