@@ -80,7 +80,7 @@ import ApplicationServices
         // Here we assume the observer needs to run on the main run loop to catch system events effectively.
         await MainActor.run() {
             let runLoopSource = AXObserverGetRunLoopSource(observer)
-            CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .defaultMode)
+            CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         }
     }
 
@@ -132,7 +132,7 @@ import ApplicationServices
         // Remove from RunLoop on MainActor
         Task { @MainActor in
             let runLoopSource = AXObserverGetRunLoopSource(observer)
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .defaultMode)
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         }
     }
 

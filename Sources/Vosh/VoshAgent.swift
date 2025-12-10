@@ -1344,6 +1344,34 @@ import Output
     
     /// Triggers the "Ask Vosh" AI assistant.
     func askVosh() async {
-        Output.shared.announce("Ask Vosh is coming soon")
+        // 1. Capture the screen IMMEDIATELY (before showing any UI)
+        Output.shared.announce("Capturing...")
+        guard let image = SnapshotManager.captureScreen() else {
+            Output.shared.announce("Screen Capture Failed")
+            return
+        }
+        
+        // 2. Request User Query (Now safe due to Input fix)
+        // We use a slight delay or ensure runModal doesn't block the audio announcement completely
+        await MainActor.run {
+            guard let query = InputWindow.requestInput(title: "Ask Vosh", prompt: "What would you like to know about this screen?") else {
+                Output.shared.announce("Cancelled")
+                return
+            }
+            
+            guard !query.isEmpty else { return }
+            
+            // 3. Process with Vision/AI (Async)
+            Task {
+                Output.shared.announce("Thinking...")
+                do {
+                    // Call the VisionService (which mocks the LLM/AI part for now)
+                    let response = try await VisionService.shared.ask(query: query, image: image)
+                    Output.shared.announce(response)
+                } catch {
+                    Output.shared.announce("AI Error: \(error.localizedDescription)")
+                }
+            }
+        }
     }
 }

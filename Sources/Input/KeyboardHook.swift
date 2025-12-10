@@ -68,7 +68,7 @@ final class KeyboardHook {
         self.eventTap = tap
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         self.runLoopSource = source
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, CFRunLoopMode.defaultMode)
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, CFRunLoopMode.commonModes)
     }
     
     // Internal helper to handle event with lock safety if needed, though callback runs on Main Loop serial.
@@ -98,7 +98,7 @@ final class KeyboardHook {
         defer { lock.unlock() }
         
         if let source = runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, CFRunLoopMode.defaultMode)
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, CFRunLoopMode.commonModes)
             runLoopSource = nil
         }
         if let tap = eventTap {

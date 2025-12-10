@@ -59,7 +59,7 @@ import CoreGraphics
         }
         
         IOHIDManagerRegisterInputValueCallback(manager, callback, Unmanaged.passUnretained(self).toOpaque())
-        IOHIDManagerScheduleWithRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
+        IOHIDManagerScheduleWithRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
         IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
     }
     

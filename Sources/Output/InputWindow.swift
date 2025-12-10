@@ -28,11 +28,13 @@ public struct InputWindow {
         alert.addButton(withTitle: "OK")
         alert.addButton(withTitle: "Cancel")
         
-        let inputField = NSTextField(frame: NSRect(x: 0, y: 0, width: 200, height: 24))
+        let inputField = NSTextField(frame: NSRect(x: 0, y: 0, width: 250, height: 24))
         alert.accessoryView = inputField
+        
+        NSApp.activate(ignoringOtherApps: true)
+        alert.window.level = .floating
         alert.window.initialFirstResponder = inputField
         
-        // Modal execution blocks the main thread loop for this window context
         let response = alert.runModal()
         
         if response == .alertFirstButtonReturn {
