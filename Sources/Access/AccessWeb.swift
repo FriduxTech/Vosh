@@ -36,6 +36,14 @@ import Output
     ///
     /// - Returns: The next `Element`, or `nil` if at the end.
     func next() async -> Element? {
+        // Recovery: Check if element is still valid
+        do {
+            _ = try await currentElement.getAttribute(.role)
+        } catch {
+             currentElement = root
+             return root
+        }
+        
         // Algorithm:
         // 1. Try First Child
         // 2. Try Next Sibling

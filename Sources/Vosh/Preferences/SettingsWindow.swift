@@ -419,6 +419,11 @@ final class SettingsWindow: NSWindowController {
         webItem.label = "Web"
         let webView = NSView(frame: tabView.contentRect)
         
+        let browseCheck = NSButton(checkboxWithTitle: "Enable Browse Mode", target: self, action: #selector(browseModeChanged(_:)))
+        browseCheck.state = preferences.enableBrowseMode ? .on : .off
+        browseCheck.frame = NSRect(x: 20, y: 430, width: 250, height: 24)
+        webView.addSubview(browseCheck)
+        
         let layoutCheck = NSButton(checkboxWithTitle: "Document Layout (Virtual Buffer)", target: self, action: #selector(layoutChanged(_:)))
         layoutCheck.state = preferences.documentLayout ? .on : .off
         layoutCheck.frame = NSRect(x: 20, y: 400, width: 250, height: 24)
@@ -782,6 +787,7 @@ final class SettingsWindow: NSWindowController {
     @objc private func webLoadChanged(_ sender: NSPopUpButton) { preferences.webLoadFeedback = Preferences.WebLoadFeedback(rawValue: sender.indexOfSelectedItem) ?? .tone }
     @objc private func webSummaryChanged(_ sender: NSButton) { preferences.speakWebSummary = sender.state == .on }
     @objc private func webAutoReadChanged(_ sender: NSButton) { preferences.autoReadWebPage = sender.state == .on }
+    @objc private func browseModeChanged(_ sender: NSButton) { preferences.enableBrowseMode = sender.state == .on }
     
     // General - Greeting/Goodbye
     @objc private func greetingChanged(_ sender: NSTextField) { preferences.greetingMessage = sender.stringValue }

@@ -34,6 +34,8 @@ import Output
                 strategy = try await AccessPassThroughReader(for: element)
             case .outline, .table:
                 strategy = try await AccessContainerReader(for: element)
+            case .math:
+                strategy = try await AccessMathReader(for: element)
             default:
                 strategy = try await AccessGenericReader(for: element)
             }

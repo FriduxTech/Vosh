@@ -504,14 +504,30 @@ import Output
             }
             
             guard let processIdentifier = processIdentifier else {
-                application = nil
-                self.processIdentifier = 0
+                // RECOVERY LOGIC
+                
+                // 1. Try to find the new frontmost app (OS usually switches automatically)
+                if let newFront = NSWorkspace.shared.frontmostApplication, newFront.processIdentifier != self.processIdentifier {
+                    await refocus(processIdentifier: newFront.processIdentifier)
+                    return
+                }
+                
+                // 2. Fallback to Dock or Finder if "No Focus"
+                // Finder PID is reliable? Usually.
+                let apps = NSWorkspace.shared.runningApplications
+                if let finder = apps.first(where: { $0.bundleIdentifier == "com.apple.finder" }) {
+                    finder.activate(options: .activateIgnoringOtherApps)
+                    // The observer will catch the activation notification and trigger refocus naturally
+                    return
+                }
+                
+                // 3. Last Resort
                 application = nil
                 self.processIdentifier = 0
                 await observer?.invalidate()
                 observer = nil
                 focus = nil
-                focus = nil
+                
                 let content = [OutputSemantic.noFocus]
                 await Output.shared.convey(content)
                 return

@@ -608,6 +608,12 @@ import Output
         
         await accessibility.setFormsModeRequest { enterFormsMode in
             Task { @MainActor in
+                // Respect global preference
+                if !Preferences.shared.enableBrowseMode {
+                    if Input.shared.browseModeEnabled { Input.shared.browseModeEnabled = false }
+                    return
+                }
+                
                 let targetBrowseMode = !enterFormsMode
                 if Input.shared.browseModeEnabled != targetBrowseMode {
                     Input.shared.browseModeEnabled = targetBrowseMode
@@ -713,6 +719,14 @@ import Output
             accessibility.webLoadFeedback = webLoadFeedback
             accessibility.speakWebSummary = speakWebSummary
             accessibility.autoReadWebPage = autoReadWebPage
+            accessibility.webLoadFeedback = webLoadFeedback
+            accessibility.speakWebSummary = speakWebSummary
+            accessibility.autoReadWebPage = autoReadWebPage
+        }
+        
+        // Enforce Browse Mode State
+        if !prefs.enableBrowseMode {
+            Input.shared.browseModeEnabled = false
         }
         
         // Push Audio Engine Settings
@@ -870,7 +884,7 @@ import Output
             Output.shared.announce("Cancelled")
         } else {
             let webActive = await accessibility.isWebActive
-            if webActive && !Input.shared.browseModeEnabled {
+            if webActive && !Input.shared.browseModeEnabled && Preferences.shared.enableBrowseMode {
                  Input.shared.browseModeEnabled = true
                  Output.shared.announce("Browse Mode")
             } else {
@@ -1172,6 +1186,11 @@ import Output
     
     /// Toggles Browse Mode (virtual cursor for web).
     func toggleBrowseMode() async {
+        if !Preferences.shared.enableBrowseMode {
+             Output.shared.announce("Browse Mode is disabled in settings")
+             Input.shared.browseModeEnabled = false
+             return
+        }
         Input.shared.browseModeEnabled.toggle()
         Output.shared.announce(Input.shared.browseModeEnabled ? "Browse Mode On" : "Browse Mode Off")
     }

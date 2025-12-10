@@ -168,62 +168,80 @@ import ApplicationServices
         }
         queued = []
         synthesizer.stopSpeaking(at: .immediate)
+        AudioEngine.shared.stopSpeech()
         
         let processedContent = processVerbosity(content)
+        var speechBuffer = [String]()
         
         for expression in processedContent {
             switch expression {
-            case .apiDisabled: speak("Accessibility interface disabled")
-            case let .application(label): speak(label); HapticManager.shared.play(.generic)
-            case let .boolValue(bool): speak(bool ? "On" : "Off")
-            case .boundary: SoundManager.shared.play(.boundary); HapticManager.shared.play(.alignment); continue
+            case .apiDisabled: speechBuffer.append("Accessibility interface disabled")
+            case let .application(label): 
+                speechBuffer.append("Application \(label)")
+                HapticManager.shared.play(.generic)
+            case let .boolValue(bool): speechBuffer.append(bool ? "On" : "Off")
+            case .boundary: 
+                SoundManager.shared.play(.boundary)
+                HapticManager.shared.play(.alignment)
             case let .capsLockStatusChanged(status):
                 SoundManager.shared.play(.click)
-                speak("CapsLock \(status ? "On" : "Off")")
-            case let .columnCount(count): speak("\(count) columns")
-            case .disabled: speak("Disabled")
-            case .edited: speak("Edited")
-            case .entering: speak("Entering"); HapticManager.shared.play(.levelChange)
-            case .exiting: speak("Exiting"); HapticManager.shared.play(.levelChange)
-            case let .floatValue(val): speak(String(format: "%.02f", val))
-            case let .help(txt): speak(txt)
-            case let .insertedText(txt): speak(txt)
-            case let .intValue(val): speak("\(val)")
-            case let .label(lbl): speak(lbl)
+                speechBuffer.append("CapsLock \(status ? "On" : "Off")")
+            case let .columnCount(count): speechBuffer.append("\(count) columns")
+            case .disabled: speechBuffer.append("dimmed")
+            case .edited: speechBuffer.append("edited")
+            case .entering: 
+                // Dont speak Entering typically, just sound/haptic
+                HapticManager.shared.play(.levelChange)
+            case .exiting:
+                HapticManager.shared.play(.levelChange)
+            case let .floatValue(val): speechBuffer.append(String(format: "%.02f", val))
+            case let .help(txt): speechBuffer.append(txt)
+            case let .insertedText(txt): speechBuffer.append(txt)
+            case let .intValue(val): speechBuffer.append("\(val)")
+            case let .label(lbl): speechBuffer.append(lbl)
             case .next, .previous: continue
-            case .noFocus: speak("Nothing in focus")
-            case .expanded: speak("expanded")
-            case .collapsed: speak("collapsed")
-            case .notAccessible: speak("Application not accessible")
-            case let .placeholderValue(val): speak(val)
-            case let .removedText(txt): SoundManager.shared.play(.delete); speak(txt)
-            case let .role(r): speak(r)
-            case let .rowCount(c): speak("\(c) rows")
-            case .selected: speak("Selected"); HapticManager.shared.play(.generic)
-            case let .selectedChildrenCount(c): speak("\(c) selected")
-            case let .selectedText(t): speak(t)
-            case let .selectedTextGrew(t): speak(t)
-            case let .selectedTextShrank(t): speak(t)
-            case let .stringValue(s): speak(s)
-            case .timeout: speak("Application is not responding")
-            case let .updatedLabel(l): speak(l)
-            case let .urlValue(u): speak(u)
-            case let .window(w): speak(w)
+            case .noFocus: speechBuffer.append("No selection")
+            case .expanded: speechBuffer.append("expanded")
+            case .collapsed: speechBuffer.append("collapsed")
+            case .notAccessible: speechBuffer.append("Application not accessible")
+            case let .placeholderValue(val): speechBuffer.append(val)
+            case let .removedText(txt): 
+                SoundManager.shared.play(.delete)
+                speechBuffer.append(txt)
+            case let .role(r): speechBuffer.append(r)
+            case let .rowCount(c): speechBuffer.append("\(c) rows")
+            case .selected: 
+                speechBuffer.append("selected")
+                HapticManager.shared.play(.generic)
+            case let .selectedChildrenCount(c): speechBuffer.append("\(c) selected")
+            case let .selectedText(t): speechBuffer.append(t)
+            case let .selectedTextGrew(t): speechBuffer.append(t)
+            case let .selectedTextShrank(t): speechBuffer.append(t)
+            case let .stringValue(s): speechBuffer.append(s)
+            case .timeout: speechBuffer.append("Application is not responding")
+            case let .updatedLabel(l): speechBuffer.append(l)
+            case let .urlValue(u): speechBuffer.append(u)
+            case let .window(w): speechBuffer.append(w)
             
             // Phase 3 Handling
             case let .indentation(count):
-                if indentationFeedback == 1 { speak("\(count) spaces indent") }
-                else if indentationFeedback == 2 { SoundManager.shared.play(.texture) } // Tone
+                if indentationFeedback == 1 { speechBuffer.append("\(count) spaces indent") }
+                else if indentationFeedback == 2 { SoundManager.shared.play(.texture) }
             case let .repeatedSpaces(count):
-                 if repeatedSpacesFeedback == 1 { speak("\(count) spaces") }
+                 if repeatedSpacesFeedback == 1 { speechBuffer.append("\(count) spaces") }
                  else if repeatedSpacesFeedback == 2 { SoundManager.shared.play(.texture) }
             case .misspelling:
-                 if misspellingFeedback == 1 { speak("Misspelled") }
-                 else if misspellingFeedback == 2 { SoundManager.shared.play(.delete) } // Tone
+                 if misspellingFeedback == 1 { speechBuffer.append("Misspelled") }
+                 else if misspellingFeedback == 2 { SoundManager.shared.play(.delete) }
             case .textAttributesChanged:
-                 if textAttributesFeedback == 1 { speak("Attributes changed") }
+                 if textAttributesFeedback == 1 { speechBuffer.append("Attributes changed") }
                  else if textAttributesFeedback == 2 { SoundManager.shared.play(.levelChange) }
             }
+        }
+        
+        if !speechBuffer.isEmpty {
+            let fullText = speechBuffer.joined(separator: ", ")
+            speak(fullText)
         }
     }
     

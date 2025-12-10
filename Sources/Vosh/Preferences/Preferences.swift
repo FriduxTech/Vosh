@@ -376,6 +376,13 @@ public final class Preferences {
     
     // MARK: - Web Navigation
     
+    /// Enables Browse Mode (Virtual Cursor navigation) on web content.
+    /// If false, behaves strictly like VoiceOver (System Focus only/Interaction).
+    public var enableBrowseMode: Bool {
+        get { defaults.object(forKey: "enableBrowseMode") == nil ? true : defaults.bool(forKey: "enableBrowseMode") }
+        set { defaults.set(newValue, forKey: "enableBrowseMode") }
+    }
+    
     public enum WebLoadFeedback: Int {
         case none = 0
         case progress = 1
