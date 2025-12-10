@@ -99,6 +99,55 @@ public struct Element: @unchecked Sendable {
         }
     }
 
+    /// Retrieves multiple attributes in a single IPC call.
+    ///
+    /// This significantly reduces overhead when inspecting elements (e.g. checking Role, Title, and Value simultaneously).
+    ///
+    /// - Parameter attributes: A list of `ElementAttribute` keys to retrieve.
+    /// - Returns: A dictionary mapping the requested attributes to their values (if present).
+    public func getMultipleAttributes(_ attributes: [ElementAttribute]) async throws -> [ElementAttribute: Any] {
+        let legacyValue = legacyValue as! AXUIElement
+        let keys = attributes.map { $0.rawValue as CFString } as CFArray
+        
+        var values: CFArray?
+        let result = AXUIElementCopyMultipleAttributeValues(legacyValue, keys, [], &values)
+        
+        let error = ElementError(from: result)
+        switch error {
+        case .success:
+            break
+        case .apiDisabled, .invalidElement, .notImplemented, .timeout:
+            throw error
+        default:
+            // Partial failure is common with multiple attributes; we try to salvage what we can
+            break
+        }
+        
+        guard let rawValues = values as? [Any] else { return [:] }
+        
+        var results = [ElementAttribute: Any]()
+        
+        for (index, value) in rawValues.enumerated() {
+            // Check for AXValue errors in the array (indicated by NSNull or specific error markers in some bridges)
+            // But usually AX simply maintains index alignment.
+            if index < attributes.count {
+                let attr = attributes[index]
+                // Convert value
+                if let converted = fromLegacy(value: value as CFTypeRef) {
+                    // Handle Role/Subrole mapping explicitly
+                    if attr == .role, let str = converted as? String, let role = ElementRole(rawValue: str) {
+                        results[attr] = role
+                    } else if attr == .subrole, let str = converted as? String, let sub = ElementSubrole(rawValue: str) {
+                        results[attr] = sub
+                    } else {
+                        results[attr] = converted
+                    }
+                }
+            }
+        }
+        return results
+    }
+
     /// Serializes the element and its hierarchy into a dictionary structure.
     ///
     /// This is primarily used for debugging, logging, or inspecting the accessibility tree.

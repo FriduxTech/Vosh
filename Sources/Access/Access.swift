@@ -635,12 +635,46 @@ import Output
         }
     }
 
+    // State tracking for text selection
+    private var lastSelectedRange: Range<Int>?
+    private var lastValue: String?
+
     /// Handles accessibility events received from the system.
     ///
     /// - Parameter event: The `ElementEvent` containing the notification type and payload.
     private func handleEvent(_ event: ElementEvent) async {
         do {
             switch event.notification {
+            
+            // NEW: Text Selection Handler
+            case .textSelectionDidUpdate:
+                // Only care if this is the focused element
+                guard focus?.entity.element == event.subject else { break }
+                
+                // Get new state
+                guard let newRange = try? await event.subject.getAttribute(.selectedTextRange) as? Range<Int>,
+                      let value = try? await event.subject.getAttribute(.value) as? String else {
+                    break // use break instead of return to close switch
+                }
+                
+                // Compare with previous to decide what to speak
+                if let oldRange = lastSelectedRange, let oldValue = lastValue, value == oldValue {
+                    await handleSelectionChange(from: oldRange, to: newRange, in: value)
+                } else {
+                    // Context switch or value change
+                    if newRange.isEmpty {
+                         // Read char at cursor
+                         await speakCharacterAt(index: newRange.lowerBound, in: value)
+                    } else {
+                         if let selectedText = try? await event.subject.getAttribute(.selectedText) as? String {
+                             await Output.shared.announce("Selected: \(selectedText)")
+                         }
+                    }
+                }
+                
+                // Update State
+                lastSelectedRange = newRange
+                lastValue = value
             case .applicationDidAnnounce:
                 if let announcement = event.payload?[.announcement] as? String {
                     await Output.shared.announce(announcement)
@@ -830,6 +864,73 @@ import Output
              try await window.setAttribute(.isFocused, value: true) 
         } catch {
             await handleError(error)
+        }
+    }
+    
+    /// Cycles focus to the next window in the application's window list.
+    public func focusNextWindow() async {
+        await cycleWindow(forward: true)
+    }
+    
+    /// Cycles focus to the previous window.
+    public func focusPreviousWindow() async {
+        await cycleWindow(forward: false)
+    }
+    
+    private func cycleWindow(forward: Bool) async {
+        guard let app = application else { return }
+        
+        do {
+            // 1. Get all windows
+            guard let windows = try await app.getAttribute(.windows) as? [Element], !windows.isEmpty else {
+                await Output.shared.announce("No windows")
+                return
+            }
+            
+            // 2. Identify current focused window
+            let current = try? await app.getAttribute(.focusedWindow) as? Element
+            
+            // 3. Find index
+            let index = windows.firstIndex(where: { $0 == current }) ?? (forward ? -1 : windows.count)
+            
+            // 4. Calculate next index (wrapping)
+            let nextIndex: Int
+            if forward {
+                nextIndex = (index + 1) % windows.count
+            } else {
+                nextIndex = (index - 1 + windows.count) % windows.count
+            }
+            
+            let targetWindow = windows[nextIndex]
+            
+            // 5. Raise and Focus
+            try? await targetWindow.performAction("AXRaise")
+            try await targetWindow.setAttribute(.isMain, value: true)
+            
+            // 6. Attempt to focus content inside the window
+            if let entity = try? await AccessEntity(for: targetWindow) {
+                // Use AutoFocus logic to land on content, not just the window frame
+                if let content = await AutoFocus.findBestTarget(in: entity) {
+                    let focus = try await AccessFocus(on: content)
+                    self.focus = focus
+                    try? await content.setKeyboardFocus()
+                    
+                    // Announce Window Title + Content
+                    var output = [OutputSemantic]()
+                    if let title = try? await targetWindow.getAttribute(.title) as? String {
+                        output.append(.window(title))
+                    }
+                    output.append(contentsOf: try await focus.reader.read())
+                    await Output.shared.convey(output)
+                    return
+                }
+            }
+            
+            // Fallback if no content found
+            await refocus(processIdentifier: processIdentifier)
+            
+        } catch {
+            await Output.shared.announce("Cannot switch window")
         }
     }
     

@@ -5,8 +5,11 @@
 //  Created by Vosh Team.
 //
 
-import AppKit
 import Access
+import AppKit
+import AVFoundation
+import Cocoa
+import Element
 import Input
 import Output
 
@@ -678,6 +681,18 @@ import Output
             accessibility.speakWebSummary = speakWebSummary
             accessibility.autoReadWebPage = autoReadWebPage
         }
+        
+        // Push Audio Engine Settings
+        await AudioEngine.shared.configure(
+             isSpatialEnabled: prefs.spatialAudioEnabled,
+             reverb: AVAudioUnitReverbPreset(rawValue: prefs.reverbPreset) ?? .smallRoom
+        )
+        
+        // Push Braille Settings
+        let table = prefs.brailleTranslationTable
+        await MainActor.run {
+            BrailleService.shared.translationTable = table
+        }
     }
     
     // MARK: - Gesture System
@@ -742,10 +757,7 @@ import Output
         case .buttons:
              await accessibility.browsePreviousElement(role: "Button")
         case .windows:
-             // Cycle windows backwards
-             await listWindows() // Too heavy? Just focus previous?
-             // Need accessibility.focusPreviousWindow()
-             Output.shared.announce("Previous Window")
+             await accessibility.focusPreviousWindow()
         }
     }
     
@@ -767,7 +779,7 @@ import Output
         case .buttons:
              await accessibility.browseNextElement(role: "Button")
         case .windows:
-             Output.shared.announce("Next Window")
+             await accessibility.focusNextWindow()
         }
     }
     /// Helper to bind a custom closure action specifically for Browse Mode.

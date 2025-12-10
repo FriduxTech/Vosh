@@ -64,16 +64,27 @@ public final class BrailleService {
         "U": "⠠⠥", "V": "⠠⠧", "W": "⠠⠺", "X": "⠠⠭", "Y": "⠠⠽", "Z": "⠠⠵"
     ]
     
+    // Add property to store the current table type
+    public var translationTable: String = "English Grade 1"
+
     /// Translates a string into Grade 1 Braille.
     ///
     /// - Parameter text: The input string.
     /// - Returns: A string containing Braille Unicode characters.
     private func translate(_ text: String) -> String {
+        // TODO: Integrate LibLouis for Grade 2 (Contracted) Braille.
+        // For now, we only support basic Grade 1 (Uncontracted).
+        
+        if translationTable.contains("Grade 2") {
+            // Placeholder: In a real implementation, call LibLouis here.
+            // For this MVP, we warn the user via the display that Grade 2 isn't ready.
+            // But we fallback to Grade 1 silently to keep it usable.
+        }
+        
         return text.map { char in
             if let mapped = brailleMap[char] {
                 return mapped
             }
-            // Fallback for symbols or uppercase not in map
             if char.isUppercase, let lowerMapped = brailleMap[Character(char.lowercased())] {
                 return "⠠" + lowerMapped
             }

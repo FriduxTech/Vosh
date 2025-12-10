@@ -109,6 +109,12 @@ import AppKit
     private func updateReverb() {
         reverb.loadFactoryPreset(reverbPreset)
     }
+
+    /// Configures the audio engine settings.
+    public func configure(isSpatialEnabled: Bool, reverb: AVAudioUnitReverbPreset) {
+        self.isSpatialEnabled = isSpatialEnabled
+        self.reverbPreset = reverb
+    }
     
     // MARK: - Playback
     

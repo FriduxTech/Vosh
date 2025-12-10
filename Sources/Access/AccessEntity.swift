@@ -211,18 +211,15 @@ import Element
     /// - Parameter element: The element to evaluate.
     /// - Returns: `true` if the element should be exposed to the user.
     private static func isInteresting(element: Element) async throws -> Bool {
-        if let isFocused = try await element.getAttribute(.isFocused) as? Bool, isFocused {
-            return true
-        }
-        if let title = try await element.getAttribute(.title) as? String, !title.isEmpty {
-            return true
-        }
-        if let description = try await element.getAttribute(.description) as? String, !description.isEmpty {
-            return true
-        }
-        guard let role = try await element.getAttribute(.role) as? ElementRole else {
-            return false
-        }
+        // Fetch all candidate properties in ONE call
+        let attributes = try await element.getMultipleAttributes([.isFocused, .title, .description, .role])
+        
+        if let isFocused = attributes[.isFocused] as? Bool, isFocused { return true }
+        if let title = attributes[.title] as? String, !title.isEmpty { return true }
+        if let desc = attributes[.description] as? String, !desc.isEmpty { return true }
+        
+        guard let role = attributes[.role] as? ElementRole else { return false }
+        
         switch role {
         case .browser, .busyIndicator, .button, .cell,
                 .checkBox, .colorWell, .comboBox, .dateField,
@@ -234,6 +231,8 @@ import Element
                 .slider, .staticText, .tabGroup, .table,
                 .textArea, .textField, .timeField, .toolbar,
                 .valueIndicator, .webArea:
+            
+            // Note: These checks still incur recursion overhead, but less frequent
             let isLeaf = try await isLeaf(element: element)
             let hasWebAncestor = try await hasWebAncestor(element: element)
             return !hasWebAncestor || hasWebAncestor && isLeaf
