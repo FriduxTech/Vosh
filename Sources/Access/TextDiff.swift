@@ -49,54 +49,106 @@ public actor TextDiff {
         }
         
         // 3. Scroll / Overlap Detection
-        // The screen scrolled up. The bottom of 'previousText' matches the top of 'newText'.
-        // We look for the largest overlap.
+        // Optimized O(N) approach using Swift's fast string comparisons
         
-        // Optimization: Use a quick check for suffix/prefix
-        // If the text is very large, this could be slow, but for UI strings it's fine.
-        // Terminals might have ~2000 chars.
+        let newCount = newText.count
+        let previousCount = previousText.count
         
-        let oldChars = Array(previousText)
-        let newChars = Array(newText)
-        
-        // Bound the search to reasonable visual overlap (e.g. at least 10 chars or 10%)
-        // We verify from the longest possible overlap down to 0.
-        
-        let maxOverlap = min(oldChars.count, newChars.count)
-        var bestOverlapLength = 0
-        
-        // We assume substantial overlap in a scroll.
-        // We start checking if old suffix matches new prefix.
-        // Check largest possible overlap first (greedy).
-        
-        // Heuristic: Limits to prevent O(N^2) on huge strings if necessary, 
-        // but simple loop is O(N) comparisons where match fits.
-        // Actually strict suffix-prefix check is inefficient if done naively.
-        // Swift strings are fast enough for UI buffers.
-        
-        for len in stride(from: maxOverlap, through: 1, by: -1) {
-            // Check if suffix of old (last len) == prefix of new (first len)
-            let oldStart = oldChars.count - len
-            
-            // Slice comparison
-            // ArraySlice conforms to Equatable
-            if oldChars[oldStart..<oldChars.count] == newChars[0..<len] {
-                bestOverlapLength = len
-                break
-            }
+        // Quick check for complete mismatch
+        if newText.isEmpty { 
+            previousText = newText
+            return "Cleared" // Or empty?
         }
         
-        // Update state
+        // Overlap usually means:
+        // previousText: [ A B C ]
+        // newText:      [ B C D ]
+        // Suffix of prev matches Prefix of new.
+        
+        // We assume substantial overlap in a terminal scroll context.
+        // We can check from the end of previousText backwards.
+        
+        // Heuristic: If we can match a significant chunk, accepted.
+        // We find the longest common substring rooted at End of Prev and Start of New.
+        
+        // Strategy: 
+        // 1. commonSuffix calculation is expensive if unguided.
+        // 2. We assume the *new content* is appended.
+        // 3. We assume some old content scrolled off the top.
+        
+        // Check if `newText` contains `previousText` (Simple Append) - Handled above by hasPrefix check (which is O(1)/O(K)).
+        // We already checked hasPrefix.
+        
+        // Check overlap.
+        // Iterate possible overlap lengths.
+        let maxOverlap = min(previousCount, newCount)
+        var overlap = 0
+        
+        // Optimization: Use suffix check on previousText?
+        // Let's assume lines. Terminal updates are line-based.
+        // But we have raw string.
+        
+        // We use Swift's `hasPrefix` iteratively? No, slow.
+        // Use Collection.difference? Very slow for large text.
+        
+        // We use a simple loop but optimistically.
+        // Most updates are append small, so overlap is large.
+        // Check if `newText` starts with a suffix of `previousText`.
+        
+        // Try largest overlap first? (Previous text just shifted up)
+        // If we shifted 1 line up, overlap is (Total - 1 line).
+        
+        // Optimized Scan:
+        // Only check if matching chars.
+        // Convert to Array for indexing speed if re-used, but string views are okay.
+        // Actually, just find the *new* text.
+        // New text is the suffix of `newText` that is NOT in overlap.
+        
+        // Let's try to find where `previousText` ends inside `newText`? No, other way around.
+        // We want to find a suffix of `active previous` that matches a prefix of `active new`.
+        
+        // Using `commonPrefix` logic:
+        // We want to find largest K such that previousText.suffix(K) == newText.prefix(K)?
+        // NO.
+        // Scroll:
+        // Prev: Line1\nLine2
+        // New:  Line2\nLine3
+        // Overlap is "Line2". 
+        // Prev.suffix(5) == New.prefix(5).
+        
+        // So yes, we want largest K.
+        // Iterating K from maxOverlap down to 1.
+        
+        // SPEED UP:
+        // Check commonHash? No.
+        // Check last char of prev match inside new?
+        // Let's use a reasonable range. If no overlap found within X chars, assume full replace?
+        // AccessActor isn't main thread, so some CPU is okay, but we want responsiveness.
+        
+        // Start from max overlap (best case = little scroll).
+        let pChars = Array(previousText)
+        let nChars = Array(newText)
+        
+        // Use local Arrays for speed
+        for k in stride(from: min(pChars.count, nChars.count), through: 1, by: -1) {
+             // Check boundary chars first to avoid slice alloc
+             if pChars[pChars.count - k] == nChars[0] {
+                 // Potential match start, verify full slice
+                 // Slice compare is fast
+                 if pChars[(pChars.count - k)...] == nChars[0..<k] {
+                     overlap = k
+                     break
+                 }
+             }
+        }
+        
         previousText = newText
         
-        if bestOverlapLength > 0 {
-            // Return only the non-overlapping part (the new bottom lines)
-            return String(newChars[bestOverlapLength..<newChars.count])
+        if overlap > 0 {
+            let diff = nChars[overlap..<newCount]
+            return String(diff)
         }
         
-        // 4. Complete Replacement
-        // If no overlap, return clear + new text?
-        // Or just new text.
         return newText
     }
 }

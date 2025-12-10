@@ -77,8 +77,15 @@ import Output
             if safetyCounter > 50 { break } // Sanity check against cycles
             
             // FIX: Strict boundary check
-            // If p is the root (WebArea), we do NOT want its sibling.
-            if p == root { break } 
+            // If p is the root (WebArea), we check if we should trap or exit.
+            // Standard behavior is to exit navigation if we reach the end of the container and there are no more siblings.
+            // Returning nil allows the Access system (VoshAgent) to fall back to standard window navigation,
+            // effectively moving focus out of the web area.
+            if p == root { 
+                // We reached the root and found no next sibling in the loop. 
+                // Break the loop to return nil.
+                break 
+            } 
             
             if let sibling = await getNextSibling(of: p) {
                 currentElement = sibling

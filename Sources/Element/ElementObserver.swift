@@ -142,8 +142,23 @@ import ApplicationServices
         if !isInvalidated {
              // CRITICAL: Accessing the run loop source after deallocation is a crash risk.
              // We MUST have invalidated before this point.
-             // fatalError("ElementObserver must be invalidated before deinit to prevent run loop crashes.")
-             print("Error: ElementObserver deallocated without invalidation. This may cause a crash.")
+             // Attempting to invalidate now to prevent crash, though this should be done explicitly.
+             
+             // We cannot capture 'self' in a Task here safely as we are deallocating.
+             // We must rely on the fact that if we are here, we are doing cleanup.
+             // BUT: We can't use 'self.observer' in a MainActor Task easily if 'self' is dying.
+             // However, CFRunLoopRemoveSource needs the observer reference.
+             let observer = self.observer
+             
+             // Dispatch synchronously to main if needed (dangerous in deinit) or just hope we are on main?
+             // ElementObserver is @MainActor, so deinit *should* happen on Main usually.
+             // But to be safe and avoid "swift_retain" on deallocating object:
+             
+             // We can't access `self` inside the block. We captured `observer`.
+             // We assume CF functions are thread-safe or we accept the risk vs the guarantee crash.
+             // CFRunLoopRemoveSource is thread-safe.
+             let runLoopSource = AXObserverGetRunLoopSource(observer)
+             CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         }
     }
 }

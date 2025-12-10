@@ -11,15 +11,16 @@ import Output
 import Input
 import Element
 
-/// An application module specialized for Terminal interaction.
-///
 /// `TerminalModule` reduces verbosity when interacting with command-line interfaces,
 /// suppressing intermediate scroll area announcements and simplifying the initial focus feedback.
 final class TerminalModule: AppModule {
-    
+
     /// Target Bundle ID: `com.apple.Terminal`.
     let bundleIdentifier = "com.apple.Terminal"
     
+    /// The persistent observer for Terminal content updates.
+    private var terminalObserver: ElementObserver?
+
     /// Handles focus changes within Terminal.
     ///
     /// Silences scroll area notifications and provides a summarized "Terminal Active" announcement
@@ -41,18 +42,25 @@ final class TerminalModule: AppModule {
             await Output.shared.announce("Terminal")
             
             // IMPORTANT: Subscribe to value updates to read command output
+            // We invalidate any previous observer first
+            // ElementObserver is @MainActor
+            await MainActor.run {
+                 self.terminalObserver?.invalidate()
+            }
+            
             if let observer = try? await ElementObserver(element: element) {
                 // Terminal usually updates 'AXValue' or 'AXVisibleText'
                 try? await observer.subscribe(to: .valueDidUpdate)
-                // We need to attach this observer to the Access system or manage it here.
-                // Since Modules are stateless/singleton, we can't easily hold refs.
-                // Better approach: Let Access.swift handle .valueDidUpdate generically, 
-                // but Terminal requires *diffing* the value to read only new lines.
+                // Assign on MainActor
+                await MainActor.run {
+                    self.terminalObserver = observer
+                }
                 
-                // For MVP: Let Access generic .valueDidUpdate handle it, but we need
-                // to ensure Access actually subscribes to it for the focused element.
-                // Access.swift currently only subscribes to Application-level events.
-                // We need to add specific element observation support.
+                // Forward events to Access system or handle them?
+                // For now, we ensure it stays alive. 
+                // Ideally, we'd hook this into Access.swift's event loop, but TerminalModule 
+                // is a specific handler. If we want Access to read it, Access needs to observe it.
+                // But this fixes the "Zombie" issue where it died immediately.
             }
             return true
         }

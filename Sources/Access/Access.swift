@@ -833,7 +833,7 @@ import Output
                 }
                 
             case .valueDidUpdate:
-                // Diff Engine for Text
+                // Diff Engine for Text (Focused)
                 if focus?.entity.element == event.subject {
                     if let newValue = try? await event.subject.getAttribute(.value) as? String {
                         let diff = await textDiff.process(newValue)
@@ -842,6 +842,32 @@ import Output
                         }
                         lastValue = newValue
                     }
+                }
+                
+                // Live Regions (Background Updates)
+                // Check if the updating element is a live region
+                if let status = try? await event.subject.getAttribute(.liveRegionStatus) as? String,
+                   status != "off" {
+                     // Get Content
+                     // Web content might put the new text in Value, Title, or Description.
+                     var text: String? = try? await event.subject.getAttribute(.value) as? String
+                     if text == nil || (text?.isEmpty ?? true) {
+                         text = try? await event.subject.getAttribute(.title) as? String
+                     }
+                     if text == nil || (text?.isEmpty ?? true) {
+                         text = try? await event.subject.getAttribute(.description) as? String
+                     }
+                     
+                     if let content = text, !content.isEmpty {
+                         // Check politeness
+                         if status == "assertive" {
+                             // Interrupt previous speech logic if necessary, or just queue with high priority?
+                             // Output.shared.announce queues. 
+                             // We might want to flush if assertive.
+                             await Output.shared.interrupt() 
+                         }
+                         await Output.shared.announce(content)
+                     }
                 }
                 
                 // Progress Bars

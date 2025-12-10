@@ -187,14 +187,20 @@ import AppKit
         let z = Float(-5.0)
         
         // Verify connection format matches buffer
+        // Verify connection format matches buffer
         // Safety Check: If we reused a player, it might be connected with a different format.
         if let output = engine.outputConnectionPoints(for: player, outputBus: 0).first {
              // Check if the player's output format matches the buffer
              let currentFormat = player.outputFormat(forBus: 0)
              if output.node === environment && currentFormat != buffer.format {
-                 // Format mismatch detected. Reconnect.
+                 // Format mismatch detected.
+                 // CRITICAL FIX: Cannot disconnect/connect while engine is running without potential crash/error.
+                 // We should ideally pause, but that interrupts all audio.
+                 // Better approach: Detach and create new player? Or pause just this node (already stopped)?
+                 // AVAudioEngine connection changes are generally safe IF the node is detached?
+                 // Disconnecting an attached node is okay.
+                 
                  engine.disconnectNodeOutput(player)
-                 // This connect call is "heavy" but necessary if format changed.
                  engine.connect(player, to: environment, format: buffer.format)
              }
         } else {

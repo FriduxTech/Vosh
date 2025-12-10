@@ -126,6 +126,16 @@ import Output
         reg.register(BlockCommand { agent in agent.performNavigation { a in await a.accessibility.focusNextSibling(backwards: true) } }, for: VoshCommand.previousItem.rawValue)
         reg.register(BlockCommand { agent in agent.performNavigation { a in await a.accessibility.focusParent() } }, for: VoshCommand.parent.rawValue)
         reg.register(BlockCommand { agent in agent.performNavigation { a in await a.accessibility.focusFirstChild() } }, for: VoshCommand.firstChild.rawValue)
+        
+        // Manual Interaction (Aliases)
+        reg.register(BlockCommand { agent in 
+            await agent.accessibility.focusFirstChild() 
+        }, for: "interact")
+
+        reg.register(BlockCommand { agent in 
+            await agent.accessibility.focusParent() 
+        }, for: "stopInteracting")
+
         reg.register(BlockCommand { agent in agent.performNavigation { a in await a.handleRotorUp() } }, for: VoshCommand.rotorUp.rawValue)
         reg.register(BlockCommand { agent in agent.performNavigation { a in await a.handleRotorDown() } }, for: VoshCommand.rotorDown.rawValue)
         reg.register(BlockCommand { agent in agent.selector.next() }, for: VoshCommand.rotorNext.rawValue)

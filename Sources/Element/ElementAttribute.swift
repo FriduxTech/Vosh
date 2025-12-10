@@ -345,6 +345,14 @@ public enum ElementAttribute: String {
     
     /// Search field clear button.
     case clearButton = "AXClearButton"
+    
+    // MARK: - Live Regions
+    
+    /// The status of a live region (polite, assertive, off).
+    case liveRegionStatus = "AXLiveRegionStatus"
+    
+    /// The relevant changes for a live region (additions, text, all).
+    case liveRegionRelevant = "AXLiveRegionRelevant"
 
     // MARK: - Indicators
     
