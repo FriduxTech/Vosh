@@ -381,7 +381,7 @@ import Output
         
         // Sync toggles
         bind(.toggleReviewFollowsFocus, key: .keyboard6AndCaret, shift: true) // ^
-        bind(.toggleFocusFollowsReview, key: .keyboardSpace, shift: true) // (?)
+        // bind(.toggleFocusFollowsReview, key: .keyboardSpace, shift: true) // Conflict with Read Selection
         // Browse Keys (BrowseMode=true)
         bindBrowse(.find, key: .keyboardF)
         bindBrowse(.findNext, key: .keyboardF, shift: true)
@@ -396,6 +396,11 @@ import Output
         bindBrowse(.browsePreviousEditField, key: .keyboardE, shift: true)
         bindBrowse(.browseNextQuote, key: .keyboardQ)
         bindBrowse(.browsePreviousQuote, key: .keyboardQ, shift: true)
+        
+        bindBrowse(.browseNextButton, key: .keyboardB)
+        bindBrowse(.browsePreviousButton, key: .keyboardB, shift: true)
+        bindBrowse(.browseNextTable, key: .keyboardT)
+        bindBrowse(.browsePreviousTable, key: .keyboardT, shift: true)
         // ... (Others)
         
         // Tools
@@ -1402,12 +1407,14 @@ import Output
     
     /// Triggers the "Ask Vosh" AI assistant.
     func askVosh() async {
-        // 1. Capture the screen IMMEDIATELY (before showing any UI)
-        Output.shared.announce("Capturing...")
+        // FIX: Capture first, THEN announce.
+        // This ensures the "Capturing..." HUD doesn't block the screen content.
         guard let image = SnapshotManager.captureScreen() else {
             Output.shared.announce("Screen Capture Failed")
             return
         }
+        
+        Output.shared.announce("Capturing...") // Now it's safe to show UI
         
         // 2. Request User Query (Now safe due to Input fix)
         // We use a slight delay or ensure runModal doesn't block the audio announcement completely

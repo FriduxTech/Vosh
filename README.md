@@ -67,7 +67,7 @@ Allows you to explore the screen without moving the keyboard focus.
 * **Shift + M**: Move Mouse to Review Cursor
 * **Ctrl + M**: Move Review Cursor to Mouse
 * **Shift + 6 (^)**: Toggle "Review follows Focus"
-* **Shift + Space**: Toggle "Focus follows Review"
+* **Shift + Space**: Read Current Selection
 
 ---
 
@@ -86,6 +86,10 @@ These keys work **without** the Vosh Modifier when inside a Web Area or Document
 * **Shift + Q**: Previous Blockquote
 * **F**: Find Text
 * **Shift + F**: Find Next
+* **B**: Next Button
+* **Shift + B**: Previous Button
+* **T**: Next Table
+* **Shift + T**: Previous Table
 
 **Lists:**
 * **Shift + L**: List Links

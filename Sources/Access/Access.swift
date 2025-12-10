@@ -202,12 +202,17 @@ import Output
             // Web / Browse Mode Logic
             if let role = try? await focus.entity.element.getAttribute(.role) as? ElementRole {
                  if role == .textField || role == .textArea {
-                     // Auto-Forms Mode: Request Entry (true)
+                     // Auto-Forms Mode: Request Entry (true) -> Disables Browse Mode
                      onFormsModeRequest?(true)
                  } else {
-                     // Browse Mode: Request Exit (false) if in web
+                     // Browse Mode: 
                      if webAccess != nil {
+                         // We are in web, Request Exit Forms Mode (false) -> Enables Browse Mode
                          onFormsModeRequest?(false)
+                     } else {
+                         // FIX: We are NOT in web (Native App).
+                         // Force Forms Mode (true) -> Disables Browse Mode so typing works.
+                         onFormsModeRequest?(true)
                      }
                  }
             }
@@ -1145,7 +1150,10 @@ import Output
     /// This method fetches the content (value, title, or description) or math equation
     /// from the focused element and initializes the `reviewIndex`.
     private func prepareReview() async {
-        guard let focus = focus else { return }
+        // FIX: Use reviewFocus if available, otherwise fallback to system focus
+        let targetFocus = reviewFocus ?? focus
+        
+        guard let focus = targetFocus else { return }
         
             let role = try? await focus.entity.element.getAttribute(.role) as? ElementRole
             if role == .math {
