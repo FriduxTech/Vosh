@@ -31,10 +31,35 @@ final class FinderModule: AppModule {
     /// - Returns: `false`, delegating to default Vosh behavior.
     func onFocus(_ focus: AccessFocus) async -> Bool {
         // Finder Specific Logic
+        let element = await focus.entity.element
         
-        // 1. If we focused a Window, search for the content view
-        // Check role via element attribute
-        if let role = try? await focus.entity.element.getAttribute(.role) as? ElementRole, role == .window {
+        // 1. Metadata Support (Icon View / List View items)
+        guard let role = try? await element.getAttribute(.role) as? ElementRole else { return false }
+        
+        // Handle Icon / List Items
+        if role == .image || role == .textField || role == .staticText || role.rawValue == "AXIconView" {
+            // Check if we are selecting a file
+            if let filename = try? await element.getAttribute(.title) as? String {
+                
+                // Try to get metadata description (Finder puts "Kind: Image, Size: 2MB..." here)
+                let metadata = (try? await element.getAttribute(.description) as? String) ?? ""
+                
+                // Combine them smarty
+                // If metadata is present, standard reader might skip title or vice versa.
+                // We force a specific format.
+                
+                var output = filename
+                if !metadata.isEmpty {
+                    output += ", \(metadata)"
+                }
+                
+                await Output.shared.announce(output)
+                return true // Suppress default
+            }
+        }
+        
+        // 2. If we focused a Window, search for the content view
+        if role == .window {
             if let content = await findContent(root: focus.entity) {
                 // Set system focus to the content view (Vosh will pick up the event)
                 try? await content.element.setAttribute(.isFocused, value: true)

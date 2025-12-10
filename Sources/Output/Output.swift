@@ -327,15 +327,30 @@ import ApplicationServices
         return processed
     }
 
+    /// History buffer of spoken text.
+    private var history: [String] = []
+    
+    /// Maximum number of history items to keep.
+    private let maxHistoryItems = 50
+    
+    /// Current index for history review (nil means live/latest).
+    private var historyIndex: Int?
+
     /// The most recent string announced by Vosh.
-    public private(set) var lastSpoken: String?
+    public var lastSpoken: String? {
+        return history.last
+    }
 
     /// Internal speech primitive. Handles pre-processing like pronunciations, number style, and "Cap" prefixes.
     private func speak(_ string: String) {
         var text = applyPronunciations(string)
         
         // Update History
-        lastSpoken = text
+        history.append(text)
+        if history.count > maxHistoryItems {
+            history.removeFirst()
+        }
+        historyIndex = nil // Reset review pointer to live
         
         // Number Style
         if numberStyle == 1 { // Digits
@@ -349,22 +364,59 @@ import ApplicationServices
              text = text.replacingOccurrences(of: "([A-Z])", with: " Cap $1", options: .regularExpression)
         }
         
+        speakInternal(text)
+    }
+    
+    // MARK: - History Navigation
+    
+    /// Reads the previous item in the speech history.
+    public func readPreviousHistory() {
+        if history.isEmpty { return }
+        
+        var newIndex = (historyIndex ?? history.count) - 1
+        if newIndex < 0 { newIndex = 0 }
+        
+        historyIndex = newIndex
+        speakInternal(history[newIndex], history: true)
+    }
+    
+    /// Reads the next item in the speech history.
+    public func readNextHistory() {
+        guard let currentIndex = historyIndex else { return }
+        
+        let newIndex = currentIndex + 1
+        if newIndex >= history.count {
+            historyIndex = nil
+            speakInternal("Live", history: true)
+        } else {
+            historyIndex = newIndex
+            speakInternal(history[newIndex], history: true)
+        }
+    }
+    
+    /// Helper to speak without polluting history.
+    private func speakInternal(_ text: String, history: Bool = false) {
         // Notify listener
         let finalText = text
-        Task { @MainActor in 
-            onSpeech?(finalText)
-            BrailleService.shared.output(finalText)
+        Task { @MainActor in
+            if !history {
+                onSpeech?(finalText)
+                BrailleService.shared.output(finalText)
+            }
         }
         
-        if AudioEngine.shared.isSpatialEnabled {
+        if AudioEngine.shared.isSpatialEnabled && !history {
             speakSpatial(text, at: currentSpatialPosition ?? 0.5)
         } else {
             let utterance = AVSpeechUtterance(string: text)
             applyConfig(to: utterance)
             
             isAnnouncing = true
+            synthesizer.stopSpeaking(at: .immediate)
             synthesizer.speak(utterance)
         }
+        // Show visual HUD
+        VoshHUD.shared.show(text)
     }
 }
 

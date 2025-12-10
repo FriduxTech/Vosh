@@ -1634,6 +1634,50 @@ import Output
         await Output.shared.announce("No formatting info")
     }
     
+    /// Generates a hierarchical description of the current focus location.
+    /// Example: "Send Button, Group, Window Message, Mail Application"
+    public func getContextDescription() async -> String {
+        guard let focus = focus else { return "No Focus" }
+        
+        var path = [String]()
+        
+        // 1. Current Element (Name + Role)
+        let t = (try? await focus.entity.element.getAttribute(.title) as? String) ?? ""
+        let r = (try? await focus.entity.element.getAttribute(.role) as? ElementRole)?.rawValue ?? "Element"
+        path.append(t.isEmpty ? r : "\(t) \(r)")
+        
+        // 2. Ancestors
+        var current = focus.entity
+        var safety = 0
+        while let parent = try? await current.getParent(), safety < 10 {
+            safety += 1
+            current = parent
+            
+            // Get description
+            let role = (try? await current.element.getAttribute(.role) as? ElementRole)
+            
+            // Skip boring containers for brevity
+            if role == .group || role == .scrollArea || role == .splitGroup { continue }
+            
+            var name = (try? await current.element.getAttribute(.title) as? String) ?? ""
+            if name.isEmpty {
+                // Fallback for windows/dialogs
+                name = role?.rawValue ?? "Container"
+            }
+            path.append(name)
+            
+            // Stop at Window usually
+            if role == .window { break }
+        }
+        
+        // 3. Application
+        if let appName = NSWorkspace.shared.frontmostApplication?.localizedName {
+            path.append(appName)
+        }
+        
+        return path.joined(separator: ", inside ")
+    }
+    
     // MARK: - Helpers for VoshAgent (Avoiding Element import)
     
     public func getFocusedWindowTitle() async -> String? {

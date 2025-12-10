@@ -68,6 +68,7 @@ import Output
 
         case describeImage, ocrScreen, askVosh
         case copyLastSpoken, readTextAttributes
+        case announceContext, historyPrevious, historyNext
         
         // MARK: - Mouse Control
         case moveMouseToFocus, moveMouseAndClick
@@ -156,6 +157,14 @@ import Output
         reg.register(BlockCommand { agent in 
             await agent.accessibility.readTextAttributes() 
         }, for: VoshCommand.readTextAttributes.rawValue)
+
+        reg.register(BlockCommand { agent in 
+            let context = await agent.accessibility.getContextDescription()
+            Output.shared.announce(context)
+        }, for: VoshCommand.announceContext.rawValue)
+        
+        reg.register(BlockCommand { _ in Output.shared.readPreviousHistory() }, for: VoshCommand.historyPrevious.rawValue)
+        reg.register(BlockCommand { _ in Output.shared.readNextHistory() }, for: VoshCommand.historyNext.rawValue)
         
         // Mouse
         reg.register(BlockCommand { agent in await agent.moveMouseToFocus() }, for: VoshCommand.moveMouseToFocus.rawValue)
@@ -280,6 +289,11 @@ import Output
         bind(.quit, key: .keyboardQ)
         bind(.toggleSpeech, key: .keyboardS)
         bind(.toggleScreenCurtain, key: .keyboardS, shift: true)
+        
+        // Context & History
+        bind(.announceContext, key: .keyboardK, shift: true)
+        bind(.historyPrevious, key: .keyboardLeftArrow, ctrl: true)
+        bind(.historyNext, key: .keyboardRightArrow, ctrl: true)
         
         // Navigation
         bind(.nextItem, key: .keyboardRightArrow)
