@@ -648,7 +648,13 @@ import Output
         }
     }
     
-    // Search State
+    // Services
+    // var accessibility: Access! (Removed duplicate)
+    
+    // UI Retention
+    private var currentListWindow: NSWindowController?
+    
+    // State
     private var lastSearchText: String = ""
 
     /// Vosh Selector (Rotor).
@@ -703,6 +709,9 @@ import Output
         // Start Services
         MultitouchManager.shared.start()
         BrailleService.shared.output("Vosh Ready")
+        
+        // NOW start Access (which triggers the first "Welcome/Focus" speech)
+        await accessibility.start()
     }
     
     
@@ -1348,10 +1357,16 @@ import Output
         }
         
         await MainActor.run {
-            let window = SearchableListWindow(title: "Links", items: links.map { $0.title }) { index in
-                let selected = links[index].element
-                Task { await self.accessibility.focusBrowseElement(selected) }
+            let window = SearchableListWindow(title: "Links", items: links.map { $0.title }) { [weak self] index in
+                guard let self = self else { return }
+                // Use index directly to fetch checking bounds if needed (handler guarantees valid index)
+                if index < links.count {
+                    let selected = links[index].element
+                    Task { await self.accessibility.focusBrowseElement(selected) }
+                }
+                self.currentListWindow = nil
             }
+            self.currentListWindow = window
             window.show()
         }
     }
@@ -1371,10 +1386,15 @@ import Output
         }
         
         await MainActor.run {
-            let window = SearchableListWindow(title: "Headings", items: headings.map { $0.title }) { index in
-                let selected = headings[index].element
-                Task { await self.accessibility.focusBrowseElement(selected) }
+            let window = SearchableListWindow(title: "Headings", items: headings.map { $0.title }) { [weak self] index in
+                guard let self = self else { return }
+                if index < headings.count {
+                    let selected = headings[index].element
+                    Task { await self.accessibility.focusBrowseElement(selected) }
+                }
+                self.currentListWindow = nil
             }
+            self.currentListWindow = window
             window.show()
         }
     }

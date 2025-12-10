@@ -21,8 +21,8 @@ final class SearchableListWindow: NSWindowController, NSTableViewDelegate, NSTab
     /// The comprehensive list of all items.
     private let items: [String]
     
-    /// The currently displayed filtered list.
-    private var filteredItems: [String]
+    /// The currently displayed filtered indices of the original items.
+    private var filteredIndices: [Int]
     
     /// Async completion handler invoked when a user makes a selection.
     /// Returns the index of the selected item in the *original* `items` array.
@@ -43,7 +43,7 @@ final class SearchableListWindow: NSWindowController, NSTableViewDelegate, NSTab
     init(title: String, items: [String], handler: @escaping (Int) async -> Void) {
         self.title = title
         self.items = items
-        self.filteredItems = items
+        self.filteredIndices = Array(items.indices)
         self.selectionHandler = handler
         
         let window = NSWindow(
@@ -96,11 +96,12 @@ final class SearchableListWindow: NSWindowController, NSTableViewDelegate, NSTab
     // MARK: - NSTableViewDataSource
     
     func numberOfRows(in tableView: NSTableView) -> Int {
-        return filteredItems.count
+        return filteredIndices.count
     }
     
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
-        return filteredItems[row]
+        let originalIndex = filteredIndices[row]
+        return items[originalIndex]
     }
     
     // MARK: - NSSearchFieldDelegate (Control Text Did Change)
@@ -110,12 +111,12 @@ final class SearchableListWindow: NSWindowController, NSTableViewDelegate, NSTab
         if let field = obj.object as? NSSearchField {
             let text = field.stringValue
             if text.isEmpty {
-                filteredItems = items
+                filteredIndices = Array(items.indices)
             } else {
-                filteredItems = items.filter { $0.localizedCaseInsensitiveContains(text) }
+                filteredIndices = items.indices.filter { items[$0].localizedCaseInsensitiveContains(text) }
             }
             tableView.reloadData()
-            if !filteredItems.isEmpty {
+            if !filteredIndices.isEmpty {
                 tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
             }
         }
@@ -135,7 +136,7 @@ final class SearchableListWindow: NSWindowController, NSTableViewDelegate, NSTab
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         if commandSelector == #selector(NSResponder.moveDown(_:)) {
             let row = tableView.selectedRow
-            if row < filteredItems.count - 1 {
+            if row < filteredIndices.count - 1 {
                 tableView.selectRowIndexes(IndexSet(integer: row + 1), byExtendingSelection: false)
                 tableView.scrollRowToVisible(row + 1)
                 // Semantic announcement would happen via Access/Output observing selection change naturally
@@ -150,7 +151,7 @@ final class SearchableListWindow: NSWindowController, NSTableViewDelegate, NSTab
             return true
         } else if commandSelector == #selector(NSResponder.insertNewline(_:)) {
             let row = tableView.selectedRow
-            if row >= 0 && row < filteredItems.count {
+            if row >= 0 && row < filteredIndices.count {
                 handleSelection(row)
             }
             return true
@@ -164,11 +165,9 @@ final class SearchableListWindow: NSWindowController, NSTableViewDelegate, NSTab
     /// Processes the user selection and triggers the callback.
     private func handleSelection(_ row: Int) {
         // Find original index
-        let item = filteredItems[row]
-        if let originalIndex = items.firstIndex(of: item) {
-             Task {
-                 await selectionHandler?(originalIndex)
-             }
+        let originalIndex = filteredIndices[row]
+        Task {
+            await selectionHandler?(originalIndex)
         }
         self.window?.close()
     }

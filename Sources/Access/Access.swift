@@ -140,6 +140,12 @@ import Output
             }
         }
         
+        // Note: Startup logic moved to start() to allow pref sync first
+    }
+    
+    /// Beings monitoring application switches and focuses the current app.
+    /// Call this AFTER configuring preferences.
+    public func start() async {
         // Focus initial application
         await refocus(processIdentifier: NSWorkspace.shared.frontmostApplication?.processIdentifier)
         
@@ -359,12 +365,14 @@ import Output
             
             // Math Sibling Fallback ... (omitted for brevity in search/replace match if possible, but strict match needed)
             // Re-implementing math fallback to be safe
+            // Math Sibling Fallback
             if sibling == nil,
                let parent = try? await oldFocus.entity.getParent(),
                (try? await parent.element.getAttribute(.role) as? ElementRole) == .math {
                    let math = AccessMath(root: parent.element)
                    let kids = await math.getChildren()
-                   if let idx = kids.firstIndex(where: { $0 == oldFocus.entity.element }) {
+                   // Strict Equality Check
+                   if let idx = kids.firstIndex(of: oldFocus.entity.element) {
                        let nextIdx = backwards ? idx - 1 : idx + 1
                        if kids.indices.contains(nextIdx) {
                            sibling = try? await AccessEntity(for: kids[nextIdx])
@@ -1759,21 +1767,14 @@ import Output
             
             let currentElement = current.entity.element
             
-            // Find index using description/role matching if simple equality fails, 
-            // but usually Element instances from same fetch might match or we need IsEqual logic.
-            // For MVP assuming identity or sequential scan match.
+            // FIX: Use strict Array.firstIndex(of:) which uses Element : Equatable
+            var index = children.firstIndex(of: currentElement)
             
-            var index: Int?
-            for (i, child) in children.enumerated() {
-                let r = (try? await child.getAttribute(.role) as? ElementRole)
-                let d = (try? await child.getAttribute(.description) as? String)
-                let currentR = (try? await currentElement.getAttribute(.role) as? ElementRole)
-                let currentD = (try? await currentElement.getAttribute(.description) as? String)
-                
-                if r == currentR && d == currentD {
-                    // Primitive check, works for many cases
-                    index = i
-                    break
+            // Fallback logic only if strict equality fails (rare)
+            if index == nil {
+                for (i, child) in children.enumerated() {
+                    // Check pointers or attributes if needed
+                    if child == currentElement { index = i; break }
                 }
             }
             
