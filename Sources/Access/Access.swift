@@ -734,7 +734,13 @@ import Output
             case .layoutDidChange, .elementDidResize, .rowCountDidUpdate, .selectedChildrenDidMove:
                 // Clear web cache if active
                 await webAccess?.invalidateCache()
-                // ... (fallthrough if needed or break) ...
+                // Update focus ring if the moving element is our focus
+                if let focus = focus, focus.entity.element == event.subject {
+                     await onCustomFocusChange?(focus)
+                }
+                if let rFocus = reviewFocus, rFocus.entity.element == event.subject {
+                     await onCustomReviewChange?(rFocus)
+                }
                 
             case .elementDidDisappear:
                 guard event.subject == focus?.entity.element else {
@@ -1741,6 +1747,11 @@ import Output
         for await text in web.readFromCursor() {
             await Output.shared.announce(text, interrupt: false)
         }
+    }
+    
+    /// Resets the web walker to the root of the current web area.
+    public func resetWebCursor() {
+        webAccess?.reset()
     }
     
     public func getSelectedText() async -> String? {

@@ -31,6 +31,11 @@ import Output
         siblingsCache = nil
     }
     
+    /// Resets navigation to the root element.
+    func reset() {
+        currentElement = root
+    }
+    
     /// Initializes a web accessor for a specific web area.
     ///
     /// - Parameter root: The root element of the web content.
@@ -163,7 +168,33 @@ import Output
             return false
         }
         
-        return backwards ? await previousElement(where: predicate) : await nextElement(where: predicate)
+        // 1. Save current position
+        let startPosition = currentElement
+        
+        // 2. Search from current
+        if let found = backwards ? await previousElement(where: predicate) : await nextElement(where: predicate) {
+            return found
+        }
+        
+        // 3. Wrap Around
+        // Move to opposite end
+        currentElement = root
+        
+        if !backwards {
+            await Output.shared.announce("Wrapping search")
+            if let found = await nextElement(where: predicate) {
+                return found
+            }
+        } else {
+            // For backwards wrap, we'd need to go to end. Simplified: fail or just restart from root?
+            // Root is start. Backwards from root returns nil immediately.
+            // Efficient backwards wrap needs 'moveToEnd'.
+            await Output.shared.announce("Not found")
+        }
+        
+        // 4. Restore if absolutely nothing found
+        currentElement = startPosition
+        return nil
     }
     
     func findAll(role: ElementRole) async -> [Element] {

@@ -134,7 +134,7 @@ import Output
         // Reading
         reg.register(BlockCommand { agent in await agent.readEntireWindow() }, for: VoshCommand.readWindow.rawValue)
         reg.register(BlockCommand { agent in await agent.readEntireWindow() }, for: VoshCommand.readEntireWindow.rawValue) // Alias
-        reg.register(BlockCommand { agent in await agent.readEntireWindow() }, for: VoshCommand.readFromTop.rawValue) 
+        reg.register(BlockCommand { agent in await agent.readFromTop() }, for: VoshCommand.readFromTop.rawValue) 
         reg.register(BlockCommand { agent in await agent.readFromCursor() }, for: VoshCommand.readFromCursor.rawValue)
         reg.register(BlockCommand { agent in await agent.describeImage() }, for: VoshCommand.describeImage.rawValue)
         reg.register(BlockCommand { agent in await agent.ocrScreen() }, for: VoshCommand.ocrScreen.rawValue)
@@ -1365,6 +1365,21 @@ import Output
             Output.shared.announce(title)
         } else {
             Output.shared.announce("No Window")
+        }
+    }
+    
+    func readFromTop() async {
+        if Input.shared.browseModeEnabled {
+            Output.shared.announce("Reading from top...")
+            // Reset Web Cursor
+            await accessibility.resetWebCursor()
+            await accessibility.readAllWeb()
+        } else {
+            Output.shared.announce("Reading from top...")
+            // Logic to move focus to top?
+            // For now, read all recursively essentially covers "entire window" which is top-down.
+            // But we should ensure we announce "From Top" or similar.
+            await accessibility.readAllRecursively()
         }
     }
     
