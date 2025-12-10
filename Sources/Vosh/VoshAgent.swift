@@ -136,10 +136,9 @@ import Output
         reg.register(BlockCommand { agent in await agent.readEntireWindow() }, for: VoshCommand.readEntireWindow.rawValue) // Alias
         reg.register(BlockCommand { agent in await agent.readEntireWindow() }, for: VoshCommand.readFromTop.rawValue) 
         reg.register(BlockCommand { agent in await agent.readFromCursor() }, for: VoshCommand.readFromCursor.rawValue)
-        reg.register(BlockCommand { agent in await agent.readClipboard() }, for: VoshCommand.readClipboard.rawValue)
-        reg.register(BlockCommand { agent in await agent.readTimeDate() }, for: VoshCommand.readTimeDate.rawValue)
-        
-        reg.register(BlockCommand { agent in await agent.readCurrentLine() }, for: VoshCommand.readLine.rawValue)
+        reg.register(BlockCommand { agent in await agent.describeImage() }, for: VoshCommand.describeImage.rawValue)
+        reg.register(BlockCommand { agent in await agent.ocrScreen() }, for: VoshCommand.ocrScreen.rawValue)
+        reg.register(BlockCommand { [unowned self] _ in await self.askVosh() }, for: VoshCommand.askVosh.rawValue)
         reg.register(BlockCommand { agent in await agent.spellCurrentLine() }, for: VoshCommand.spellLine.rawValue)
         reg.register(BlockCommand { agent in await agent.readCurrentWord() }, for: VoshCommand.readWord.rawValue)
         reg.register(BlockCommand { agent in await agent.spellCurrentWord() }, for: VoshCommand.spellWord.rawValue)
@@ -723,6 +722,18 @@ import Output
                 AppModuleManager.shared.applicationDidActivate(app)
             }
         }
+        
+        // Listen for shortcut changes
+        NotificationCenter.default.addObserver(forName: Preferences.keyMappingChangedNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.reloadBindings()
+        }
+    }
+    
+    /// Re-binds all keys with the latest preferences.
+    private func reloadBindings() {
+        Input.shared.clearBindings()
+        setupBindings() // Re-run registration
+        Output.shared.announce("Shortcuts updated")
     }
     
 
@@ -1407,6 +1418,8 @@ import Output
     
     /// Captures the screen and uses AI to describe the image.
     func describeImage() async {
+        guard checkScreenRecordingPermission() else { return }
+        
         Output.shared.announce("Describing...")
         guard let image = SnapshotManager.captureScreen() else {
              Output.shared.announce("Screen Capture Failed")
@@ -1419,6 +1432,8 @@ import Output
     
     /// Performs OCR on the current screen content.
     func ocrScreen() async {
+        guard checkScreenRecordingPermission() else { return }
+        
         Output.shared.announce("Scanning...")
         guard let image = SnapshotManager.captureScreen() else {
             Output.shared.announce("Failed to capture screen")
@@ -1438,6 +1453,17 @@ import Output
         } catch {
             Output.shared.announce("Error: \(error.localizedDescription)")
         }
+    }
+    
+    // Permission Check
+    private func checkScreenRecordingPermission() -> Bool {
+        if !CGPreflightScreenCaptureAccess() {
+            if !CGRequestScreenCaptureAccess() {
+                Output.shared.announce("Screen Recording permission required.")
+                return false
+            }
+        }
+        return true
     }
     
     private func toggleScriptConsole() async {
@@ -1508,6 +1534,8 @@ import Output
     
     /// Triggers the "Ask Vosh" AI assistant.
     func askVosh() async {
+        guard checkScreenRecordingPermission() else { return }
+        
         // FIX: Capture first, THEN announce.
         // This ensures the "Capturing..." HUD doesn't block the screen content.
         guard let image = SnapshotManager.captureScreen() else {

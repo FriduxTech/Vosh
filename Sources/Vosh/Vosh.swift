@@ -20,8 +20,10 @@ import SwiftUI
 
     /// The top-level scene definition.
     var body: some Scene {
-        MenuBarExtra("Vosh", systemImage: "eye") {
-            Button(action: { NSApplication.shared.terminate(nil) }, label: { Text("Exit") })
+        // Replaced MenuBarExtra with Settings to avoid duplicate icon.
+        // The AppKit VoshMenu (AppDelegate) handles the status item.
+        Settings {
+            EmptyView()
         }
     }
 }

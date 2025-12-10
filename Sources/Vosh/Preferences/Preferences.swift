@@ -29,6 +29,11 @@ public final class Preferences {
     private let kSoundVolume = "soundVolume"
     private let kVerbosity = "verbosity"
     
+    // MARK: - Notifications
+    
+    /// Posted when the key mapping dictionary is updated.
+    public static let keyMappingChangedNotification = Notification.Name("VoshKeyMappingChanged")
+    
     // MARK: - Speech Settings
     
     /// Speech rate multiplier (0.0 - 1.0).
@@ -597,6 +602,7 @@ public final class Preferences {
         set {
             if let data = try? JSONEncoder().encode(newValue) {
                 defaults.set(data, forKey: "keyMapping")
+                NotificationCenter.default.post(name: Preferences.keyMappingChangedNotification, object: nil)
             }
         }
     }

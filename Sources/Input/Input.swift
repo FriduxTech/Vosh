@@ -27,6 +27,12 @@ import Output
     /// The set of modifier keys currently being held down.
     public private(set) var modifierKeys = Set<InputModifierKeyCode>()
     
+    /// Clears all currently registered key bindings.
+    public func clearBindings() {
+        state.keyBindings.removeAll()
+        state.bindingDescriptions.removeAll()
+    }
+    
     /// Returns the shared singleton instance of the Input manager.
     public static let shared = Input()
     
