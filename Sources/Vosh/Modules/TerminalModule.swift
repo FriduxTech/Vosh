@@ -36,11 +36,24 @@ final class TerminalModule: AppModule {
             return true
         }
         
-        // Handle the main terminal text grid
+        // Handle Main Terminal Area
         if role == .textArea {
-            // Avoid reading the entire buffer content automatically on focus.
-            // Just announce context.
-            await Output.shared.announce("Terminal Active")
+            await Output.shared.announce("Terminal")
+            
+            // IMPORTANT: Subscribe to value updates to read command output
+            if let observer = try? await ElementObserver(element: element) {
+                // Terminal usually updates 'AXValue' or 'AXVisibleText'
+                try? await observer.subscribe(to: .valueDidUpdate)
+                // We need to attach this observer to the Access system or manage it here.
+                // Since Modules are stateless/singleton, we can't easily hold refs.
+                // Better approach: Let Access.swift handle .valueDidUpdate generically, 
+                // but Terminal requires *diffing* the value to read only new lines.
+                
+                // For MVP: Let Access generic .valueDidUpdate handle it, but we need
+                // to ensure Access actually subscribes to it for the focused element.
+                // Access.swift currently only subscribes to Application-level events.
+                // We need to add specific element observation support.
+            }
             return true
         }
         

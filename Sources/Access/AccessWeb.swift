@@ -54,7 +54,9 @@ import Output
             safetyCounter += 1
             if safetyCounter > 50 { break } // Sanity check against cycles
             
-            if p == root && p != currentElement { break } // Don't go above root
+            // FIX: Strict boundary check
+            // If p is the root (WebArea), we do NOT want its sibling.
+            if p == root { break } 
             
             if let sibling = await getNextSibling(of: p) {
                 currentElement = sibling

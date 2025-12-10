@@ -1680,6 +1680,46 @@ import Output
         } catch {}
     }
     
+    // MARK: - Text Selection Helpers
+    
+    // Helper to calculate delta and speak appropriately
+    private func handleSelectionChange(from old: Range<Int>, to new: Range<Int>, in text: String) async {
+        if new.isEmpty {
+            // Caret Movement
+            if old.isEmpty {
+                let diff = new.lowerBound - old.lowerBound
+                if abs(diff) == 1 {
+                    // Character Move: Read character passed over
+                    // Right Arrow (diff +1): Read character at NEW index (or old? usually right of cursor)
+                    // Left Arrow (diff -1): Read character at NEW index
+                    let indexToRead = (diff > 0) ? old.lowerBound : new.lowerBound
+                    await speakCharacterAt(index: indexToRead, in: text)
+                } else {
+                    // Large move (Line/Word?): Let's defer to VoshAgent commands for explicit Line/Word navigation.
+                    // But for system moves (clicking mouse), read line?
+                    // For now, read character as fallback.
+                    await speakCharacterAt(index: new.lowerBound, in: text)
+                }
+            } else {
+                // Selection Cleared
+                await Output.shared.announce("Unselected")
+                await speakCharacterAt(index: new.lowerBound, in: text)
+            }
+        } else {
+            // Text Selected
+            if let substring = try? await focus?.entity.element.getAttribute(.selectedText) as? String {
+                await Output.shared.announce("Selected: \(substring)")
+            }
+        }
+    }
+
+    private func speakCharacterAt(index: Int, in text: String) async {
+        guard index >= 0, index < text.count else { return }
+        let charIndex = text.index(text.startIndex, offsetBy: index)
+        let char = text[charIndex]
+        await Output.shared.announce(String(char))
+    }
+    
     // MARK: - Mouse Routing
     
     public func moveReviewFocusToMouse() async {

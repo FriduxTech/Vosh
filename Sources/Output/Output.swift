@@ -135,7 +135,6 @@ import ApplicationServices
         // Show visual HUD
         VoshHUD.shared.show(announcement)
         SpeechLogger.shared.log(announcement)
-        BrailleService.shared.output(announcement)
         
         guard !isMuted else { return }
         
@@ -344,9 +343,12 @@ import ApplicationServices
              text = text.replacingOccurrences(of: "([A-Z])", with: " Cap $1", options: .regularExpression)
         }
         
-        // Notify listener - capture the final text
+        // Notify listener
         let finalText = text
-        Task { @MainActor in onSpeech?(finalText) }
+        Task { @MainActor in 
+            onSpeech?(finalText)
+            BrailleService.shared.output(finalText)
+        }
         
         if AudioEngine.shared.isSpatialEnabled {
             speakSpatial(text, at: currentSpatialPosition ?? 0.5)
@@ -354,9 +356,7 @@ import ApplicationServices
             let utterance = AVSpeechUtterance(string: text)
             applyConfig(to: utterance)
             
-            // FIX: Ensure state is updated so subsequent convey() calls properly queue content
             isAnnouncing = true
-            
             synthesizer.speak(utterance)
         }
     }
