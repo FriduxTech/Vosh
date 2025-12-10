@@ -26,6 +26,11 @@ import Output
     /// Stores: (Parent Element, List of Child Elements)
     private var siblingsCache: (parent: Element, children: [Element])?
     
+    /// Invalidates the sibling cache, forcing a re-fetch of the DOM tree on next navigation.
+    func invalidateCache() {
+        siblingsCache = nil
+    }
+    
     /// Initializes a web accessor for a specific web area.
     ///
     /// - Parameter root: The root element of the web content.

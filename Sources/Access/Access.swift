@@ -574,23 +574,27 @@ import Output
             var didRefocus = false
             if let saved = appFocusMap[processIdentifier] {
                  // Try to restore
-                 // Verify it still exists?
-                 // Just try to create AccessFocus.
-                 if let focus = try? await AccessFocus(on: saved) {
-                     self.focus = focus
-                     // Must explicitly set keyboard focus back if needed? 
-                     // Usually app switch handles window, but precise element might need logic.
-                     // On macOS, just selecting the app usually focuses the last element if standard.
-                     // But if we want to force our own cursor:
-                     // try? await saved.setKeyboardFocus() // Might be aggressive
+                 do {
+                     // Attempt to create focus and read. 
+                     // If the element is dead, this will throw immediately.
+                     let potentialFocus = try await AccessFocus(on: saved)
+                     let savedContent = try await potentialFocus.reader.read()
                      
-                     // Read summary
+                     // Success - Commit
+                     self.focus = potentialFocus
+                     
                      if let window = try? await saved.getAttribute(.windowElement) as? Element,
                         let label = try? await window.getAttribute(.title) as? String {
                          content.append(.window(label))
                      }
-                     content.append(contentsOf: try await focus.reader.read())
+                     content.append(contentsOf: savedContent)
                      didRefocus = true
+                 } catch {
+                     // Element is dead. Clear it so we don't loop.
+                     appFocusMap.removeValue(forKey: processIdentifier)
+                     // Retry refocus from scratch (recursive call with clean state)
+                     await refocus(processIdentifier: processIdentifier)
+                     return
                  }
             }
             
@@ -727,6 +731,11 @@ import Output
                 if self.focus != nil {
                     try await observer?.unsubscribe(from: .elementDidAppear)
                 }
+            case .layoutDidChange, .elementDidResize, .rowCountDidUpdate, .selectedChildrenDidMove:
+                // Clear web cache if active
+                await webAccess?.invalidateCache()
+                // ... (fallthrough if needed or break) ...
+                
             case .elementDidDisappear:
                 guard event.subject == focus?.entity.element else {
                     break

@@ -161,10 +161,10 @@ import Output
         up.keyboardSetUnicodeString(stringLength: chars.count, unicodeString: &chars)
         up.post(tap: .cghidEventTap)
         
-        // Echo input for feedback
-        Task { @MainActor in
-             Output.shared.announce(string)
-        }
+        // Echo input for feedback (Handled by Input manager via Event Tap)
+        // Task { @MainActor in
+        //      Output.shared.announce(string)
+        // }
     }
     
     /// Synthesizes a backspace key press.

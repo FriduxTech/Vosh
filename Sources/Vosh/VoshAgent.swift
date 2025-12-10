@@ -1134,8 +1134,26 @@ import Output
     }
     
     private func accessContextMenu() async {
-        Output.shared.announce("Context Menu (Not implemented)")
-        // logic pending: simulate right click
+        Output.shared.announce("Context Menu")
+        if await accessibility.performActionOnFocus("AXShowMenu") {
+            return
+        }
+        // Fallback: Shift + F10 is a common shortcut, or we can move mouse and right click
+        await accessibility.moveMouseToFocus(click: false)
+        await performMouseClick(right: true)
+    }
+    
+    // Helper for mouse clicks
+    private func performMouseClick(right: Bool) async {
+        await MainActor.run {
+            guard let loc = CGEvent(source: nil)?.location else { return }
+            let downType: CGEventType = right ? .rightMouseDown : .leftMouseDown
+            let upType: CGEventType = right ? .rightMouseUp : .leftMouseUp
+            let button: CGMouseButton = right ? .right : .left
+            
+            CGEvent(mouseEventSource: nil, mouseType: downType, mouseCursorPosition: loc, mouseButton: button)?.post(tap: .cghidEventTap)
+            CGEvent(mouseEventSource: nil, mouseType: upType, mouseCursorPosition: loc, mouseButton: button)?.post(tap: .cghidEventTap)
+        }
     }
     
     private func accessDock() async {
