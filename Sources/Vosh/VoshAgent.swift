@@ -89,6 +89,7 @@ import Output
         // MARK: - Interaction
         case activate // Enter/Click
         case smartTab // Tab for navigation/interaction
+        case smartTabBackward // Shift+Tab
     }
     
     // MARK: - Command Execution
@@ -116,6 +117,9 @@ import Output
         reg.register(BlockCommand { agent in await agent.toggleInputHelpMode() }, for: VoshCommand.inputHelp.rawValue)
         reg.register(BlockCommand { agent in await agent.passNextKey() }, for: VoshCommand.passNextKey.rawValue)
         reg.register(BlockCommand { agent in await agent.handleEscape() }, for: VoshCommand.escape.rawValue)
+        
+        // Pass Next Key (Pass through to system)
+        reg.register(BlockCommand { _ in Input.shared.passNextKeyToSystem() }, for: VoshCommand.passNextKey.rawValue)
         
         // Navigation
         reg.register(BlockCommand { agent in agent.performNavigation { a in await a.accessibility.focusNextSibling(backwards: false) } }, for: VoshCommand.nextItem.rawValue)
@@ -243,6 +247,7 @@ import Output
         // Interaction
         reg.register(BlockCommand { agent in await agent.performActivate() }, for: VoshCommand.activate.rawValue)
         reg.register(BlockCommand { agent in await agent.handleTab(backwards: false) }, for: VoshCommand.smartTab.rawValue)
+        reg.register(BlockCommand { agent in await agent.handleTab(backwards: true) }, for: VoshCommand.smartTabBackward.rawValue)
     }
     
     /// Activates the currently focused element (Click/Press).
@@ -250,19 +255,30 @@ import Output
     /// Attempts to perform the default accessibility action (e.g., clicking a button).
     /// If AXPress fails or is unsupported, it falls back to simulating a Return key press.
     func performActivate() async {
-        // 1. Try AXPress on the focused element
+        // 1. Menu Handling
+        if case .menu = mode {
+            await handleMenuEnter()
+            return
+        }
+        
+        // 2. Try AXPress on the focused element
         if await accessibility.performActionOnFocus("AXPress") {
              return // Success
         }
         
-        // 2. Fallback: Simulate Return Key
+        // 3. Fallback: Simulate Return Key safely
         await MainActor.run {
             let source = CGEventSource(stateID: .hidSystemState)
-            let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: true) // Return
-            let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: false)
-             
-            keyDown?.post(tap: .cghidEventTap)
-            keyUp?.post(tap: .cghidEventTap)
+            
+            func send(_ keyDown: Bool) {
+                let event = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: keyDown)
+                // CRITICAL: Mark event so Input.swift ignores it (prevents infinite loop)
+                event?.setIntegerValueField(.eventSourceUserData, value: Input.voshEventUserData)
+                event?.post(tap: .cghidEventTap)
+            }
+            
+            send(true)
+            send(false)
         }
     }
     
@@ -294,6 +310,7 @@ import Output
         bind(.quit, key: .keyboardQ)
         bind(.toggleSpeech, key: .keyboardS)
         bind(.toggleScreenCurtain, key: .keyboardS, shift: true)
+        bind(.passNextKey, key: .keyboard3AndHash, shift: true, cmd: true) // Vosh+Cmd+Shift+3
         
         // Context & History
         bind(.announceContext, key: .keyboardK, shift: true)
@@ -414,6 +431,18 @@ import Output
         bindBrowse(.browsePreviousButton, key: .keyboardB, shift: true)
         bindBrowse(.browseNextTable, key: .keyboardT)
         bindBrowse(.browsePreviousTable, key: .keyboardT, shift: true)
+        
+        // Browse Mode / Menu Bindings
+        // Escape (Close Menu / Cancel)
+        bindBrowse(.escape, key: .keyboardEscape)
+        
+        // Enter (Activate Item / Select Menu Option)
+        bindBrowse(.activate, key: .keyboardReturn)
+        
+        // Menu Navigation Keys in Browse Mode (Force Arrows even if Rotor is remapped)
+        bindBrowse(.rotorUp, key: .keyboardUpArrow)
+        bindBrowse(.rotorDown, key: .keyboardDownArrow)
+        
         // ... (Others)
         
         // Tools
@@ -425,43 +454,10 @@ import Output
         
         // Tab
          if Preferences.shared.autoInteractOnTab {
-             // Bind smartTab instead of direct handleTab to allow remapping if user desires (via smartTab command)
-             // Default is Tab / Shift+Tab
+             // Bind smartTab and smartTabBackward
+             // Dynamic binding allows user remapping via Preferences if desired
              bind(.smartTab, key: .keyboardTab)
-             bind(.smartTab, key: .keyboardTab, shift: true)
-             // Note: shift logic is handled inside handleTab usually or passed via command arg? 
-             // We need separate command or inspect event. 
-             // Regrettably, standard 'bind' doesn't pass args.
-             // But handleTab(backwards: Boolean) needs to know.
-             // We'll rely on NSEvent modifiers in the handler OR
-             // bind closure directly checking modifiers? 
-             // Actually, simplest is to bind direct keys here if not mapped, 
-             // OR use granular commands `nextInteractiveElement` / `prevInteractiveElement`.
-             // For now, let's keep direct bind but wrap in command check?
-             // Reverting to direct bind for Shift+Tab distinction unless we add `smartShiftTab`.
-             
-             // Let's implement dynamic check inside the closure:
-             /*
-             bind(.smartTab, key: .keyboardTab) // user maps "Smart Tab" -> Key
-             */
-             // Issue: How to distinquish forward/back?
-             // We can register two commands? `smartTabForward`, `smartTabBackward`?
-             // Or just check event flags in `handleTab`.
-             
-             // Current solution:
-             // If user maps .smartTab, we use that for Forward.
-             // We don't have .smartShiftTab yet.
-             // Let's stick to the previous hardcoded logic BUT use `bind` helper so it checks preference for .smartTab at least?
-             // But `.smartTab` implies forward.
-             
-             // OK, compromise: We bind .smartTab to Tab.
-             // For Shift+Tab, we bind it manually if not mapped, or add .smartShiftTab.
-             // User requested: "Bind it dynamically".
-             
-             bind(.smartTab, key: .keyboardTab)
-             // For backward, we assume Shift + whatever key SmartTab is.
-             // Or explicitly bind Shift+Tab
-              Input.shared.bindKey(browseMode: false, shiftModifier: true, key: .keyboardTab) { [weak self] in await self?.handleTab(backwards: true) }
+             bind(.smartTabBackward, key: .keyboardTab, shift: true)
          }
     }
     
@@ -855,6 +851,11 @@ import Output
     
     /// Handles the "Rotor Up" action (Previous value in current Rotor setting).
     private func handleRotorUp() async {
+        if case .menu = mode {
+            await handleMenuUp()
+            return
+        }
+        
         switch selector.currentOption {
         case .navigation:
             await accessibility.focusParent()
@@ -877,6 +878,11 @@ import Output
     
     /// Handles the "Rotor Down" action (Next value in current Rotor setting).
     private func handleRotorDown() async {
+        if case .menu = mode {
+            await handleMenuDown()
+            return
+        }
+        
         switch selector.currentOption {
         case .navigation:
             await accessibility.focusFirstChild()
